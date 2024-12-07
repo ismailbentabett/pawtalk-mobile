@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { StyleSheet, View, Dimensions, Image, Animated, Platform } from "react-native";
+import { StyleSheet, View, Dimensions, Image, Animated, Platform, TouchableOpacity } from "react-native";
 import {
   Appbar,
   Avatar,
@@ -33,7 +33,7 @@ type HomeScreenProps = {
 
 export default function HomeScreen({ navigation }: HomeScreenProps) {
   const theme = useTheme();
-  const swiperRef = useRef(null);
+  const swiperRef = useRef<Swiper<Pet>>(null);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
