@@ -66,8 +66,11 @@ export default function RegisterScreen({ navigation }: { navigation: NavigationP
           formData.name
         );
 
+        console.log('Registration result:', { success, error });
+
         if (success) {
           // Auth context will handle navigation
+          console.log('Registration successful');
         } else {
           setError(error || 'Registration failed');
         }
