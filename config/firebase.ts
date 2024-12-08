@@ -1,22 +1,24 @@
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  createUserWithEmailAndPassword as firebaseCreateUser,
+import { initializeApp } from "firebase/app";
+import {
+  getAuth,
   signInWithEmailAndPassword as firebaseSignIn,
+  createUserWithEmailAndPassword as firebaseSignUp,
   signOut as firebaseSignOut,
-  onAuthStateChanged,
-  User
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  setDoc, 
-  getDoc 
-} from 'firebase/firestore';
-import { UserData } from '../types/auth';
+  updateProfile,
+  User,
+  setPersistence,
+  browserLocalPersistence,
+} from "firebase/auth";
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  getDoc,
+  serverTimestamp,
+  Timestamp,
+} from "firebase/firestore";
+import { UserData } from "../types/auth";
 
-// Firebase config
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -26,88 +28,153 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
+export const auth = getAuth(app);
+export const db = getFirestore(app);
 
+// Set persistence to local
+setPersistence(auth, browserLocalPersistence).catch(console.error);
 
+interface AuthResponse {
+  success: boolean;
+  user?: User;
+  error?: string;
+  userData?: UserData;
+}
+
+export const signInWithEmailAndPassword = async (
+  email: string,
+  password: string
+): Promise<AuthResponse> => {
+  try {
+    const userCredential = await firebaseSignIn(auth, email, password);
+    const userData = await getCurrentUserData();
+
+    if (userCredential.user && userData) {
+      await setDoc(
+        doc(db, "users", userCredential.user.uid),
+        { 
+          lastLoginAt: serverTimestamp(),
+          updatedAt: serverTimestamp() 
+        },
+        { merge: true }
+      );
+
+      return {
+        success: true,
+        user: userCredential.user,
+        userData,
+      };
+    }
+
+    throw new Error("Failed to get user data");
+  } catch (error: any) {
+    console.error("Sign in error:", error);
+    return {
+      success: false,
+      error: getAuthErrorMessage(error.code),
+    };
+  }
+};
 
 export const createUserWithEmailAndPassword = async (
   email: string,
   password: string,
   displayName: string
-): Promise<{ success: boolean; error?: string }> => {
+): Promise<AuthResponse> => {
   try {
-    const userCredential = await firebaseCreateUser(auth, email, password);
+    const userCredential = await firebaseSignUp(auth, email, password);
+    const user = userCredential.user;
+
+    await updateProfile(user, { displayName });
 
     const userData: UserData = {
-      uid: userCredential.user.uid,
-      email: userCredential.user.email,
-      displayName,
-      role: 'user',
-      createdAt: Date.now(),
+      uid: user.uid,
+      email: user.email || "",
+      displayName: displayName,
+      role: "user",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString(),
     };
 
-    await setDoc(doc(db, 'users', userCredential.user.uid), userData);
+    await setDoc(doc(db, "users", user.uid), {
+      ...userData,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      lastLoginAt: serverTimestamp(),
+    });
 
-    return { success: true };
+    return { success: true, user, userData };
   } catch (error: any) {
-    let message = 'Registration failed';
-    switch (error.code) {
-      case 'auth/email-already-in-use':
-        message = 'Email already in use';
-        break;
-      case 'auth/invalid-email':
-        message = 'Invalid email address';
-        break;
-      case 'auth/weak-password':
-        message = 'Password must be at least 6 characters';
-        break;
-    }
-    return { success: false, error: message };
+    console.error("Sign up error:", error);
+    return {
+      success: false,
+      error: getAuthErrorMessage(error.code),
+    };
   }
 };
 
-export const signInWithEmailAndPassword = async (
-  email: string,
-  password: string
-): Promise<{ success: boolean; error?: string }> => {
+export const signOut = async (): Promise<AuthResponse> => {
   try {
-    await firebaseSignIn(auth, email, password);
+    await firebaseSignOut(auth);
     return { success: true };
   } catch (error: any) {
-    let message = 'Login failed';
-    switch (error.code) {
-      case 'auth/user-not-found':
-      case 'auth/wrong-password':
-        message = 'Invalid email or password';
-        break;
-      case 'auth/too-many-requests':
-        message = 'Too many failed attempts. Try again later';
-        break;
-    }
-    return { success: false, error: message };
+    console.error("Sign out error:", error);
+    return {
+      success: false,
+      error: "Failed to sign out",
+    };
   }
-};
-
-export const signOut = async (): Promise<void> => {
-  await firebaseSignOut(auth);
 };
 
 export const getCurrentUserData = async (): Promise<UserData | null> => {
-  const currentUser = auth.currentUser;
-  if (!currentUser) return null;
+  const user = auth.currentUser;
+  if (!user) return null;
 
-  const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-  return userDoc.data() as UserData;
+  try {
+    const docRef = doc(db, "users", user.uid);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      return {
+        ...data,
+        uid: user.uid,
+        createdAt: formatTimestamp(data.createdAt),
+        updatedAt: formatTimestamp(data.updatedAt),
+        lastLoginAt: formatTimestamp(data.lastLoginAt),
+      } as UserData;
+    }
+    return null;
+  } catch (error) {
+    console.error("Error getting user data:", error);
+    return null;
+  }
 };
 
-// Auth state observer
-export const subscribeToAuthChanges = (
-  callback: (user: User | null) => void
-) => {
-  return onAuthStateChanged(auth, callback);
+const formatTimestamp = (timestamp: Timestamp | null): string => {
+  if (!timestamp) return new Date().toISOString();
+  return timestamp.toDate().toISOString();
 };
 
-export { auth, db };
+const getAuthErrorMessage = (errorCode: string): string => {
+  switch (errorCode) {
+    case "auth/email-already-in-use":
+      return "Email already in use";
+    case "auth/invalid-credential":
+      return "Invalid email or password";
+    case "auth/weak-password":
+      return "Password should be at least 6 characters";
+    case "auth/invalid-email":
+      return "Invalid email address";
+    case "auth/network-request-failed":
+      return "Network error occurred. Please check your connection";
+    case "auth/too-many-requests":
+      return "Too many attempts. Please try again later";
+    case "auth/user-disabled":
+      return "This account has been disabled";
+    default:
+      return "An error occurred during authentication";
+  }
+};
