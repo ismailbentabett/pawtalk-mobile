@@ -17,8 +17,8 @@ type LoginScreenProps = {
 };
 
 export default function  LoginScreen({ navigation }: LoginScreenProps) {
-  const [email, setEmail] = useState('xisben2001x@gmail.com');
-  const [password, setPassword] = useState('xisben2001x@gmail.com');
+  const [email, setEmail] = useState('xisben2003x@gmail.com');
+  const [password, setPassword] = useState('xisben2003x@gmail.com');
   const [showPassword, setShowPassword] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [loading, setLoading] = useState(false);

@@ -1,17 +1,15 @@
-// navigation/AppNavigator.tsx
 import React from 'react';
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { Button } from 'react-native';
 import { useAuth } from "../contexts/AuthContext";
 import HomeScreen from "../screens/HomeScreen";
-
-import { AppStackParamList } from "../types/navigation";
 import ProfileScreen from '../screens/user/ProfileScreen';
+import { AppStackParamList } from "../types/navigation";
 
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
 export default function AppNavigator() {
-  const { isAuthorized, signOut, userData } = useAuth();
+  const { signOut, userData } = useAuth();
 
   const handleLogout = async () => {
     await signOut();
@@ -45,13 +43,7 @@ export default function AppNavigator() {
           ),
         }}
       />
- {/*      {isAuthorized(['admin', 'moderator']) && (
-        <AppStack.Screen
-          name="Settings"
-          component={SettingsScreen}
-          options={{ title: 'Settings' }}
-        />
-      )} */}
     </AppStack.Navigator>
   );
 }
+
