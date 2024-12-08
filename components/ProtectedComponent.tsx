@@ -3,20 +3,27 @@ import { useAuth } from '../contexts/AuthContext';
 
 interface ProtectedComponentProps {
   children: React.ReactNode;
-  requiredRoles?: string[];
-  fallback?: React.ReactNode;
+  requiredRoles?: string[]; // Optional: Roles allowed to access the component
+  fallback?: React.ReactNode; // Optional: Fallback UI for unauthorized access
 }
 
 export const ProtectedComponent: React.FC<ProtectedComponentProps> = ({
   children,
-  requiredRoles,
-  fallback
+  requiredRoles = [], // Defaults to an empty array (no roles required)
+  fallback = null // Defaults to null if no fallback UI is provided
 }) => {
-  const { isAuthorized } = useAuth();
+  const { isAuthorized, loading } = useAuth();
 
-/*   if (!isAuthorized(requiredRoles)) {
-    return fallback ? <>{fallback}</> : null;
+  // Show loading state if the auth context is still loading
+  if (loading) {
+    return <div>Loading...</div>;
   }
- */
+
+  // If user is not authorized for the specified roles
+  if (!isAuthorized(requiredRoles)) {
+    return <>{fallback}</>;
+  }
+
+  // Render children if the user is authorized
   return <>{children}</>;
 };
