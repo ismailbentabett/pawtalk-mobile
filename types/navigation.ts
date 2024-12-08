@@ -1,20 +1,19 @@
-import { NavigatorScreenParams } from '@react-navigation/native';
-
-export type TabParamList = {
-  HomeTab: undefined;
-  Likes: undefined;
-  Messages: undefined;
-  ProfileTab: undefined;
-};
-
-export type AppStackParamList = {
-  Main: NavigatorScreenParams<TabParamList>;
-  Profile: undefined;
-  // Add other screen names and their params here
-};
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 export type AuthStackParamList = {
   Login: undefined;
   Register: undefined;
 };
+
+export type AppStackParamList = {
+  Main: undefined;
+};
+
+export type BottomTabParamList = {
+  HomeTab: undefined;
+  ProfileTab: undefined;
+};
+
+export type AppNavigationProp = NativeStackNavigationProp<AppStackParamList>;
+export type AuthNavigationProp = NativeStackNavigationProp<AuthStackParamList>;
 
