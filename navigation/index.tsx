@@ -1,27 +1,20 @@
 import React from 'react';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { RootStackParamList, AuthStackParamList, AppStackParamList } from '../types/navigation';
+import { NavigationContainer } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
-import AuthNavigator from './AuthNavigator';
 import AppNavigator from './AppNavigator';
+import AuthNavigator from './AuthNavigator';
 import LoadingScreen from '../screens/LoadingScreen';
 
-
-
-const RootStack = createNativeStackNavigator<RootStackParamList>();
-
 export default function RootNavigator() {
-  const { user, loading } = useAuth();
+  const { isLoggedIn, initializing, loading } = useAuth();
 
-  if (loading) return <LoadingScreen />;
+  if (initializing || loading) {
+    return <LoadingScreen />;
+  }
 
   return (
-    <RootStack.Navigator screenOptions={{ headerShown: false }}>
-      {!user ? (
-        <RootStack.Screen name="Auth" component={AuthNavigator} />
-      ) : (
-        <RootStack.Screen name="App" component={AppNavigator} />
-      )}
-    </RootStack.Navigator>
+    <NavigationContainer>
+      {isLoggedIn ? <AppNavigator /> : <AuthNavigator />}
+    </NavigationContainer>
   );
 }
