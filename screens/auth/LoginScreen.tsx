@@ -1,18 +1,24 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, KeyboardAvoidingView, Platform } from 'react-native';
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import {
-  TextInput,
   Button,
-  Text,
-  Surface,
   HelperText,
+  Surface,
+  Text,
+  TextInput,
 } from 'react-native-paper';
-import { NavigationProp } from '@react-navigation/native';
 import { signInWithEmailAndPassword } from '../../config/firebase';
 
-export default function LoginScreen({ navigation }: { navigation: NavigationProp<any> }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { AuthStackParamList } from "../../types/navigation";
+
+type LoginScreenProps = {
+  navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'>;
+};
+
+export default function  LoginScreen({ navigation }: LoginScreenProps) {
+  const [email, setEmail] = useState('xisben2001x@gmail.com');
+  const [password, setPassword] = useState('xisben2001x@gmail.com');
   const [showPassword, setShowPassword] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,8 +40,12 @@ export default function LoginScreen({ navigation }: { navigation: NavigationProp
         setError('');
         const { success, error } = await signInWithEmailAndPassword(email, password);
         
+        console.log('Registration result:', { success, error });
+
         if (success) {
           // Auth context will handle navigation
+          console.log('Registration successful');
+          
         } else {
           setError(error || 'Login failed');
         }
