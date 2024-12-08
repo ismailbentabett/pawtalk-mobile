@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useCallback, useEffect } from "react";
 import {
   View,
   StyleSheet,
@@ -6,49 +6,66 @@ import {
   Dimensions,
   Animated,
   PanResponder,
+  Text,
+  Vibration,
+  TouchableOpacity,
 } from "react-native";
-import { Text, IconButton } from "react-native-paper";
+import { IconButton } from "react-native-paper";
 import { LinearGradient } from "expo-linear-gradient";
+import { BlurView } from "expo-blur";
 
-const SCREEN_HEIGHT = Dimensions.get("window").height;
-const SCREEN_WIDTH = Dimensions.get("window").width;
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
+
+const SWIPE_THRESHOLD = 120;
 
 const Users = [
   {
     id: "1",
     name: "Sarah",
     age: 28,
+    bio: "Adventure seeker and coffee enthusiast",
     uri: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80",
   },
   {
     id: "2",
     name: "Jake",
     age: 32,
+    bio: "Photographer and world traveler",
     uri: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80",
   },
   {
     id: "3",
     name: "Emma",
     age: 25,
+    bio: "Yoga instructor and nature lover",
     uri: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80",
   },
   {
     id: "4",
     name: "Alex",
     age: 30,
+    bio: "Tech entrepreneur and fitness enthusiast",
     uri: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80",
   },
   {
     id: "5",
     name: "Olivia",
     age: 27,
+    bio: "Artist and animal lover",
     uri: "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80",
   },
 ];
 
 export default function HomeScreen() {
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [lastAction, setLastAction] = useState<string | null>(null);
+  const [matchAnimation, setMatchAnimation] = useState(false);
+  const [showBio, setShowBio] = useState(false);
   const position = useRef(new Animated.ValueXY()).current;
+  const scale = useRef(new Animated.Value(0.9)).current;
+  const opacity = useRef(new Animated.Value(1)).current;
+  const bioAnimation = useRef(new Animated.Value(0)).current;
+
   const rotate = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
     outputRange: ["-10deg", "0deg", "10deg"],
@@ -65,14 +82,14 @@ export default function HomeScreen() {
   };
 
   const likeOpacity = position.x.interpolate({
-    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-    outputRange: [0, 0, 1],
+    inputRange: [0, SCREEN_WIDTH / 4],
+    outputRange: [0, 1],
     extrapolate: "clamp",
   });
 
   const nopeOpacity = position.x.interpolate({
-    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-    outputRange: [1, 0, 0],
+    inputRange: [-SCREEN_WIDTH / 4, 0],
+    outputRange: [1, 0],
     extrapolate: "clamp",
   });
 
@@ -88,37 +105,125 @@ export default function HomeScreen() {
     extrapolate: "clamp",
   });
 
-  const panResponder = PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onPanResponderMove: (_, gestureState) => {
-      position.setValue({ x: gestureState.dx, y: gestureState.dy });
-    },
-    onPanResponderRelease: (_, gestureState) => {
-      if (gestureState.dx > 120) {
-        Animated.spring(position, {
-          toValue: { x: SCREEN_WIDTH + 100, y: gestureState.dy },
-          useNativeDriver: true,
-        }).start(() => {
-          setCurrentIndex((prevIndex) => prevIndex + 1);
-          position.setValue({ x: 0, y: 0 });
-        });
-      } else if (gestureState.dx < -120) {
-        Animated.spring(position, {
-          toValue: { x: -SCREEN_WIDTH - 100, y: gestureState.dy },
-          useNativeDriver: true,
-        }).start(() => {
-          setCurrentIndex((prevIndex) => prevIndex + 1);
-          position.setValue({ x: 0, y: 0 });
-        });
-      } else {
-        Animated.spring(position, {
-          toValue: { x: 0, y: 0 },
-          friction: 4,
-          useNativeDriver: true,
-        }).start();
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onPanResponderMove: (_, gestureState) => {
+        position.setValue({ x: gestureState.dx, y: gestureState.dy });
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dx > SWIPE_THRESHOLD) {
+          handleLike();
+        } else if (gestureState.dx < -SWIPE_THRESHOLD) {
+          handleNope();
+        } else if (gestureState.dy < -SWIPE_THRESHOLD) {
+          handleSuperLike();
+        } else {
+          Animated.spring(position, {
+            toValue: { x: 0, y: 0 },
+            friction: 4,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  const handleLike = useCallback(() => {
+    Vibration.vibrate(50);
+    Animated.parallel([
+      Animated.timing(position, {
+        toValue: { x: SCREEN_WIDTH + 100, y: 0 },
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setCurrentIndex((prevIndex) => prevIndex + 1);
+      position.setValue({ x: 0, y: 0 });
+      opacity.setValue(1);
+      setLastAction('liked');
+      if (Math.random() > 0.7) {
+        setMatchAnimation(true);
+        setTimeout(() => setMatchAnimation(false), 1500);
       }
-    },
-  });
+    });
+  }, []);
+
+  const handleNope = useCallback(() => {
+    Vibration.vibrate(50);
+    Animated.parallel([
+      Animated.timing(position, {
+        toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setCurrentIndex((prevIndex) => prevIndex + 1);
+      position.setValue({ x: 0, y: 0 });
+      opacity.setValue(1);
+      setLastAction('noped');
+    });
+  }, []);
+
+  const handleSuperLike = useCallback(() => {
+    Vibration.vibrate([0, 50, 50, 50]);
+    Animated.parallel([
+      Animated.timing(position, {
+        toValue: { x: 0, y: -SCREEN_HEIGHT - 100 },
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setCurrentIndex((prevIndex) => prevIndex + 1);
+      position.setValue({ x: 0, y: 0 });
+      opacity.setValue(1);
+      setLastAction('superliked');
+      if (Math.random() > 0.5) {
+        setMatchAnimation(true);
+        setTimeout(() => setMatchAnimation(false), 1500);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (lastAction) {
+      const timer = setTimeout(() => setLastAction(null), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [lastAction]);
+
+  useEffect(() => {
+    Animated.spring(scale, {
+      toValue: 1,
+      friction: 5,
+      tension: 40,
+      useNativeDriver: true,
+    }).start();
+  }, [currentIndex]);
+
+  const toggleBio = useCallback(() => {
+    setShowBio((prev) => !prev);
+    Animated.timing(bioAnimation, {
+      toValue: showBio ? 0 : 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [showBio]);
 
   const renderUsers = () => {
     return Users.map((item, i) => {
@@ -129,18 +234,8 @@ export default function HomeScreen() {
           <Animated.View
             {...panResponder.panHandlers}
             key={item.id}
-            style={[rotateAndTranslate, styles.animatedCard]}
+            style={[rotateAndTranslate, styles.animatedCard, { opacity }]}
           >
-            <Animated.View
-              style={[styles.likeTextContainer, { opacity: likeOpacity }]}
-            >
-              <Text style={styles.likeText}>LIKE</Text>
-            </Animated.View>
-            <Animated.View
-              style={[styles.nopeTextContainer, { opacity: nopeOpacity }]}
-            >
-              <Text style={styles.nopeText}>NOPE</Text>
-            </Animated.View>
             <Image style={styles.cardImage} source={{ uri: item.uri }} />
             <LinearGradient
               colors={["transparent", "rgba(0,0,0,0.9)"]}
@@ -150,6 +245,42 @@ export default function HomeScreen() {
                 {item.name}, {item.age}
               </Text>
             </LinearGradient>
+            <Animated.View
+              style={[styles.likeTextContainer, { opacity: likeOpacity }]}
+            >
+              <BlurView intensity={100} style={styles.blurView}>
+                <Text style={styles.likeText}>LIKE</Text>
+              </BlurView>
+            </Animated.View>
+            <Animated.View
+              style={[styles.nopeTextContainer, { opacity: nopeOpacity }]}
+            >
+              <BlurView intensity={100} style={styles.blurView}>
+                <Text style={styles.nopeText}>NOPE</Text>
+              </BlurView>
+            </Animated.View>
+            <TouchableOpacity style={styles.bioButton} onPress={toggleBio}>
+              <IconButton icon="information" size={24} iconColor="white" />
+            </TouchableOpacity>
+            <Animated.View
+              style={[
+                styles.bioContainer,
+                {
+                  transform: [
+                    {
+                      translateY: bioAnimation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [300, 0],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <BlurView intensity={100} style={styles.bioBlurView}>
+                <Text style={styles.bioText}>{item.bio}</Text>
+              </BlurView>
+            </Animated.View>
           </Animated.View>
         );
       } else {
@@ -188,37 +319,60 @@ export default function HomeScreen() {
           size={30}
           iconColor="#FBD88B"
           style={[styles.button, styles.smallButton]}
-          onPress={() => {}}
+          onPress={() => {
+            Vibration.vibrate(30);
+            setCurrentIndex(0);
+          }}
         />
         <IconButton
           icon="close"
           size={40}
           iconColor="#EC5E6F"
           style={[styles.button, styles.largeButton]}
-          onPress={() => {}}
+          onPress={handleNope}
         />
         <IconButton
           icon="star"
           size={30}
           iconColor="#3AB4CC"
           style={[styles.button, styles.smallButton]}
-          onPress={() => {}}
+          onPress={handleSuperLike}
         />
         <IconButton
           icon="heart"
           size={40}
           iconColor="#4CCC93"
           style={[styles.button, styles.largeButton]}
-          onPress={() => {}}
+          onPress={handleLike}
         />
         <IconButton
           icon="flash"
           size={30}
           iconColor="#915DD1"
           style={[styles.button, styles.smallButton]}
-          onPress={() => {}}
+          onPress={() => {
+            Vibration.vibrate(30);
+          }}
         />
       </View>
+      {matchAnimation && (
+        <BlurView intensity={100} style={styles.matchAnimation}>
+          <Text style={styles.matchText}>It's a Match!</Text>
+        </BlurView>
+      )}
+      {lastAction && (
+        <Animated.View style={styles.actionFeedback}>
+          <BlurView intensity={100} style={styles.blurView}>
+            <Text style={styles.actionText}>
+              {lastAction === "liked"
+                ? "Liked!"
+                : lastAction === "noped"
+                ? "Noped!"
+                : "Super Liked!"}
+            </Text>
+          </BlurView>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -322,4 +476,61 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     padding: 10,
   },
+  matchAnimation: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  matchText: {
+    color: "white",
+    fontSize: 48,
+    fontWeight: "bold",
+  },
+  actionFeedback: {
+    position: "absolute",
+    top: 50,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+  },
+  actionText: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#4CCC93",
+  },
+  blurView: {
+    borderRadius: 20,
+    overflow: "hidden",
+    padding: 10,
+  },
+  bioButton: {
+    position: "absolute",
+    bottom: 20,
+    right: 20,
+    zIndex: 1000,
+  },
+  bioContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 10,
+    right: 10,
+    padding: 20,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    overflow: "hidden",
+  },
+  bioBlurView: {
+    padding: 20,
+    borderRadius: 20,
+  },
+  bioText: {
+    fontSize: 16,
+    color: "white",
+    textAlign: "center",
+  },
 });
+
