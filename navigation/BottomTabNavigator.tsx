@@ -1,10 +1,11 @@
-import React from 'react';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { useTheme } from 'react-native-paper';
-import { MaterialIcons } from '@expo/vector-icons';
-import HomeScreen from '../screens/HomeScreen';
-import ProfileScreen from '../screens/user/ProfileScreen';
-import { BottomTabParamList } from '../types/navigation';
+import React from "react";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import { useTheme } from "react-native-paper";
+import { MaterialIcons } from "@expo/vector-icons";
+import HomeScreen from "../screens/HomeScreen";
+import ProfileScreen from "../screens/user/ProfileScreen";
+import { BottomTabParamList } from "../types/navigation";
+import { ChatsScreen } from "../screens/chat/ChatsScreen";
 
 const Tab = createBottomTabNavigator<BottomTabParamList>();
 
@@ -17,10 +18,13 @@ export default function BottomTabNavigator() {
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
 
-          if (route.name === 'HomeTab') {
-            iconName = focused ? 'dashboard' : 'dashboard-customize';
-          } else if (route.name === 'ProfileTab') {
-            iconName = focused ? 'person' : 'person-outline';
+          if (route.name === "HomeTab") {
+            iconName = focused ? "dashboard" : "dashboard-customize";
+          } else if (route.name === "ProfileTab") {
+            iconName = focused ? "person" : "person-outline";
+          }
+          else if (route.name === "Chats") {
+            iconName = focused ? "chat-outline" : "chat-outline";
           }
 
           return <MaterialIcons name={iconName} size={size} color={color} />;
@@ -30,23 +34,30 @@ export default function BottomTabNavigator() {
         headerShown: false,
       })}
     >
-      <Tab.Screen 
-        name="HomeTab" 
-        component={HomeScreen} 
-        options={{ 
-          title: 'Home',
-          tabBarLabel: 'Dashboard'
-        }} 
+      <Tab.Screen
+        name="HomeTab"
+        component={HomeScreen}
+        options={{
+          title: "Home",
+          tabBarLabel: "Dashboard",
+        }}
       />
-      <Tab.Screen 
-        name="ProfileTab" 
-        component={ProfileScreen} 
-        options={{ 
-          title: 'Profile',
-          tabBarLabel: 'My Profile'
-        }} 
+      <Tab.Screen
+        name="ProfileTab"
+        component={ProfileScreen}
+        options={{
+          title: "Profile",
+          tabBarLabel: "My Profile",
+        }}
+      />
+      <Tab.Screen
+        name="Chats"
+        component={ChatsScreen}
+        options={{
+          title: "Chats",
+          tabBarLabel: "Chats",
+        }}
       />
     </Tab.Navigator>
   );
 }
-
