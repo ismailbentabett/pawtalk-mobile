@@ -1,26 +1,56 @@
+// navigation/AppNavigator.tsx
+import React from 'react';
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import React from "react";
+import { Button } from 'react-native';
 import { useAuth } from "../contexts/AuthContext";
 import HomeScreen from "../screens/HomeScreen";
+
 import { AppStackParamList } from "../types/navigation";
+import ProfileScreen from '../screens/user/ProfileScreen';
 
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
 export default function AppNavigator() {
-  const { isAuthorized } = useAuth();
+  const { isAuthorized, signOut, userData } = useAuth();
+
+  const handleLogout = async () => {
+    await signOut();
+  };
 
   return (
     <AppStack.Navigator>
-      <AppStack.Screen name="Home" component={HomeScreen} />
-    {/*   <AppStack.Screen 
-        name="Profile" 
+      <AppStack.Screen
+        name="Home"
+        component={HomeScreen}
+        options={({ navigation }) => ({
+          title: 'Home',
+          headerRight: () => (
+            <Button
+              title="Profile"
+              onPress={() => navigation.navigate('Profile')}
+            />
+          ),
+        })}
+      />
+      <AppStack.Screen
+        name="Profile"
         component={ProfileScreen}
         options={{
-          headerRight: () => <LogoutButton />
+          title: userData?.displayName || 'Profile',
+          headerRight: () => (
+            <Button
+              title="Logout"
+              onPress={handleLogout}
+            />
+          ),
         }}
-      /> */}
-  {/*     {isAuthorized(['admin', 'moderator']) && (
-        <AppStack.Screen name="Settings" component={SettingsScreen} />
+      />
+ {/*      {isAuthorized(['admin', 'moderator']) && (
+        <AppStack.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={{ title: 'Settings' }}
+        />
       )} */}
     </AppStack.Navigator>
   );
