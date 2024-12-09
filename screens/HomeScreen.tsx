@@ -15,12 +15,25 @@ import {
 import { IconButton } from "react-native-paper";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
-import { collection, getDocs, query, where, limit } from "firebase/firestore";
-import { db } from "../config/firebase";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  limit,
+  doc,
+  setDoc,
+  updateDoc,
+  arrayUnion,
+  increment,
+  serverTimestamp,
+  Timestamp,
+} from "firebase/firestore";
+import { db, auth } from "../config/firebase";
 import { Pet } from "../types/Pet";
+import { Match, MatchStatus } from "../types/Match";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
-
 const SWIPE_THRESHOLD = 120;
 
 export default function HomeScreen() {
@@ -31,6 +44,8 @@ export default function HomeScreen() {
   const [showBio, setShowBio] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
   const position = useRef(new Animated.ValueXY()).current;
   const scale = useRef(new Animated.Value(0.9)).current;
   const opacity = useRef(new Animated.Value(1)).current;
@@ -43,23 +58,230 @@ export default function HomeScreen() {
   const fetchPets = async () => {
     try {
       setLoading(true);
+      setError(null);
+      const userId = auth.currentUser?.uid;
+
+      if (!userId) {
+        throw new Error("User not authenticated");
+      }
+
+      const matchesQuery = query(
+        collection(db, "matches"),
+        where("userId", "==", userId)
+      );
+      const matchesSnapshot = await getDocs(matchesQuery);
+      const matchedPetIds = matchesSnapshot.docs.map((doc) => doc.data().petId);
+
+      if (matchedPetIds.length === 0) {
+        matchedPetIds.push("placeholder");
+      }
+
       const petsQuery = query(
         collection(db, "pets"),
         where("status", "==", "Active"),
+        where("id", "not-in", matchedPetIds),
         limit(10)
       );
+
       const querySnapshot = await getDocs(petsQuery);
       const fetchedPets: Pet[] = [];
+
       querySnapshot.forEach((doc) => {
-        fetchedPets.push({ id: doc.id, ...doc.data() } as Pet);
+        const petData = doc.data();
+        fetchedPets.push({
+          id: doc.id,
+          ...petData,
+          createdAt: (petData.createdAt as Timestamp).toDate(),
+          updatedAt: (petData.updatedAt as Timestamp).toDate(),
+        } as Pet);
       });
+
       setPets(fetchedPets);
     } catch (error) {
       console.error("Error fetching pets:", error);
+      setError(error instanceof Error ? error.message : "Failed to load pets");
     } finally {
       setLoading(false);
     }
   };
+
+  const createMatch = async (status: MatchStatus) => {
+    if (!auth.currentUser?.uid || currentIndex >= pets.length) return null;
+
+    try {
+      const matchRef = doc(collection(db, "matches"));
+      const match: Match = {
+        id: matchRef.id,
+        userId: auth.currentUser.uid,
+        petId: pets[currentIndex].id,
+        status,
+        createdAt: serverTimestamp() as Timestamp,
+      };
+
+      await updateDoc(doc(db, "pets", pets[currentIndex].id), {
+        lastActivity: serverTimestamp(),
+      });
+
+      if (status === "liked") {
+        const existingMatchQuery = query(
+          collection(db, "matches"),
+          where("petId", "==", pets[currentIndex].id),
+          where("userId", "==", auth.currentUser.uid),
+          where("status", "==", "liked")
+        );
+
+        const querySnapshot = await getDocs(existingMatchQuery);
+        if (!querySnapshot.empty) {
+          match.status = "matched";
+          match.matchedAt = serverTimestamp() as Timestamp;
+
+          await Promise.all([
+            updateDoc(doc(db, "pets", pets[currentIndex].id), {
+              matches: arrayUnion(auth.currentUser.uid),
+              matchRate: increment(0.1),
+            }),
+            updateDoc(doc(db, "users", auth.currentUser.uid), {
+              "settings.lastMatch": serverTimestamp(),
+            }),
+          ]);
+
+          setMatchAnimation(true);
+          setTimeout(() => setMatchAnimation(false), 1500);
+        }
+      }
+
+      await setDoc(matchRef, match);
+      return match;
+    } catch (error) {
+      console.error("Error creating match:", error);
+      return null;
+    }
+  };
+
+  const handleLike = useCallback(async () => {
+    if (currentIndex >= pets.length) return;
+
+    Vibration.vibrate(50);
+    await createMatch("liked");
+
+    Animated.parallel([
+      Animated.timing(position, {
+        toValue: { x: SCREEN_WIDTH + 100, y: 0 },
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setCurrentIndex((prevIndex) => prevIndex + 1);
+      setCurrentImageIndex(0);
+      position.setValue({ x: 0, y: 0 });
+      opacity.setValue(1);
+      setLastAction("liked");
+    });
+  }, [currentIndex, pets.length]);
+
+  const handleNope = useCallback(async () => {
+    if (currentIndex >= pets.length) return;
+
+    Vibration.vibrate(50);
+    await createMatch("passed");
+
+    Animated.parallel([
+      Animated.timing(position, {
+        toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setCurrentIndex((prevIndex) => prevIndex + 1);
+      setCurrentImageIndex(0);
+      position.setValue({ x: 0, y: 0 });
+      opacity.setValue(1);
+      setLastAction("noped");
+    });
+  }, [currentIndex, pets.length]);
+
+  const handleSuperLike = useCallback(async () => {
+    if (currentIndex >= pets.length) return;
+
+    Vibration.vibrate([0, 50, 50, 50]);
+    const match = await createMatch("liked");
+
+    if (match) {
+      await updateDoc(doc(db, "pets", pets[currentIndex].id), {
+        superLikes: arrayUnion(auth.currentUser?.uid),
+        matchRate: increment(0.2),
+      });
+    }
+
+    Animated.parallel([
+      Animated.timing(position, {
+        toValue: { x: 0, y: -SCREEN_HEIGHT - 100 },
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setCurrentIndex((prevIndex) => prevIndex + 1);
+      setCurrentImageIndex(0);
+      position.setValue({ x: 0, y: 0 });
+      opacity.setValue(1);
+      setLastAction("superliked");
+    });
+  }, [currentIndex, pets.length]);
+
+  useEffect(() => {
+    if (lastAction) {
+      const timer = setTimeout(() => setLastAction(null), 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [lastAction]);
+
+  useEffect(() => {
+    Animated.spring(scale, {
+      toValue: 1,
+      friction: 5,
+      tension: 40,
+      useNativeDriver: true,
+    }).start();
+  }, [currentIndex]);
+
+  const toggleBio = useCallback(() => {
+    setShowBio((prev) => !prev);
+    Animated.timing(bioAnimation, {
+      toValue: showBio ? 0 : 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [showBio]);
+
+  const handleImagePress = useCallback(() => {
+    if (pets[currentIndex] && pets[currentIndex].images.length > 1) {
+      setCurrentImageIndex(
+        (prevIndex) => (prevIndex + 1) % pets[currentIndex].images.length
+      );
+    }
+  }, [currentIndex, pets]);
+
+  const handleRefresh = useCallback(async () => {
+    Vibration.vibrate(30);
+    setCurrentIndex(0);
+    setCurrentImageIndex(0);
+    await fetchPets();
+  }, []);
 
   const rotate = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
@@ -124,116 +346,6 @@ export default function HomeScreen() {
     })
   ).current;
 
-  const handleLike = useCallback(() => {
-    if (currentIndex >= pets.length) return;
-    Vibration.vibrate(50);
-    Animated.parallel([
-      Animated.timing(position, {
-        toValue: { x: SCREEN_WIDTH + 100, y: 0 },
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setCurrentIndex((prevIndex) => prevIndex + 1);
-      setCurrentImageIndex(0);
-      position.setValue({ x: 0, y: 0 });
-      opacity.setValue(1);
-      setLastAction("liked");
-      if (Math.random() > 0.7) {
-        setMatchAnimation(true);
-        setTimeout(() => setMatchAnimation(false), 1500);
-      }
-    });
-  }, [currentIndex, pets.length]);
-
-  const handleNope = useCallback(() => {
-    if (currentIndex >= pets.length) return;
-    Vibration.vibrate(50);
-    Animated.parallel([
-      Animated.timing(position, {
-        toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setCurrentIndex((prevIndex) => prevIndex + 1);
-      setCurrentImageIndex(0);
-      position.setValue({ x: 0, y: 0 });
-      opacity.setValue(1);
-      setLastAction("noped");
-    });
-  }, [currentIndex, pets.length]);
-
-  const handleSuperLike = useCallback(() => {
-    if (currentIndex >= pets.length) return;
-    Vibration.vibrate([0, 50, 50, 50]);
-    Animated.parallel([
-      Animated.timing(position, {
-        toValue: { x: 0, y: -SCREEN_HEIGHT - 100 },
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setCurrentIndex((prevIndex) => prevIndex + 1);
-      setCurrentImageIndex(0);
-      position.setValue({ x: 0, y: 0 });
-      opacity.setValue(1);
-      setLastAction("superliked");
-      if (Math.random() > 0.5) {
-        setMatchAnimation(true);
-        setTimeout(() => setMatchAnimation(false), 1500);
-      }
-    });
-  }, [currentIndex, pets.length]);
-
-  useEffect(() => {
-    if (lastAction) {
-      const timer = setTimeout(() => setLastAction(null), 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [lastAction]);
-
-  useEffect(() => {
-    Animated.spring(scale, {
-      toValue: 1,
-      friction: 5,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
-  }, [currentIndex]);
-
-  const toggleBio = useCallback(() => {
-    setShowBio((prev) => !prev);
-    Animated.timing(bioAnimation, {
-      toValue: showBio ? 0 : 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-  }, [showBio]);
-
-  const handleImagePress = useCallback(() => {
-    if (pets[currentIndex] && pets[currentIndex].images.length > 1) {
-      setCurrentImageIndex(
-        (prevIndex) => (prevIndex + 1) % pets[currentIndex].images.length
-      );
-    }
-  }, [currentIndex, pets]);
-
   const renderCarouselIndicators = useCallback(() => {
     if (!pets[currentIndex]) return null;
     const images = pets[currentIndex].images;
@@ -262,11 +374,28 @@ export default function HomeScreen() {
       );
     }
 
+    if (error) {
+      return (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={handleRefresh}
+          >
+            <Text style={styles.refreshButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
     if (pets.length === 0) {
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No pets available at the moment.</Text>
-          <TouchableOpacity style={styles.refreshButton} onPress={fetchPets}>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={handleRefresh}
+          >
             <Text style={styles.refreshButtonText}>Refresh</Text>
           </TouchableOpacity>
         </View>
@@ -279,10 +408,7 @@ export default function HomeScreen() {
           <Text style={styles.emptyText}>No more pets to show.</Text>
           <TouchableOpacity
             style={styles.refreshButton}
-            onPress={() => {
-              setCurrentIndex(0);
-              fetchPets();
-            }}
+            onPress={handleRefresh}
           >
             <Text style={styles.refreshButtonText}>Start Over</Text>
           </TouchableOpacity>
@@ -420,11 +546,7 @@ export default function HomeScreen() {
             size={30}
             iconColor="#FBD88B"
             style={[styles.button, styles.smallButton]}
-            onPress={() => {
-              Vibration.vibrate(30);
-              setCurrentIndex(0);
-              setCurrentImageIndex(0);
-            }}
+            onPress={handleRefresh}
           />
           <IconButton
             icon="close"
@@ -497,8 +619,8 @@ const styles = StyleSheet.create({
     position: "absolute",
   },
   cardImage: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
     borderRadius: 20,
   },
   cardGradient: {
@@ -710,5 +832,16 @@ const styles = StyleSheet.create({
   carouselIndicatorActive: {
     backgroundColor: "white",
   },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: "#EC5E6F",
+    marginBottom: 20,
+    textAlign: "center",
+  },
 });
-
