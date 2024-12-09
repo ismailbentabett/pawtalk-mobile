@@ -24,7 +24,7 @@ export default function BottomTabNavigator() {
             iconName = focused ? "person" : "person-outline";
           }
           else if (route.name === "Chats") {
-            iconName = focused ? "chat-outline" : "chat-outline";
+            iconName = focused ? "chat" : "chat-bubble-outline";
           }
 
           return <MaterialIcons name={iconName} size={size} color={color} />;
