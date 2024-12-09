@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   StyleSheet,
@@ -9,15 +9,17 @@ import {
   Text,
   Vibration,
   TouchableOpacity,
-} from "react-native";
-import { IconButton } from "react-native-paper";
-import { LinearGradient } from "expo-linear-gradient";
-import { BlurView } from "expo-blur";
-import { collection, getDocs, query, where, limit } from "firebase/firestore";
-import { db } from "../config/firebase";
-import { Pet } from "../types/Pet";
+  ActivityIndicator,
+  ScrollView,
+} from 'react-native';
+import { IconButton } from 'react-native-paper';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { collection, getDocs, query, where, limit } from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { Pet } from '../types/Pet';
 
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const SWIPE_THRESHOLD = 120;
 
@@ -27,6 +29,8 @@ export default function HomeScreen() {
   const [lastAction, setLastAction] = useState<string | null>(null);
   const [matchAnimation, setMatchAnimation] = useState(false);
   const [showBio, setShowBio] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const position = useRef(new Animated.ValueXY()).current;
   const scale = useRef(new Animated.Value(0.9)).current;
   const opacity = useRef(new Animated.Value(1)).current;
@@ -38,9 +42,10 @@ export default function HomeScreen() {
 
   const fetchPets = async () => {
     try {
+      setLoading(true);
       const petsQuery = query(
-        collection(db, "pets"),
-        where("status", "==", "Active"),
+        collection(db, 'pets'),
+        where('status', '==', 'Active'),
         limit(10)
       );
       const querySnapshot = await getDocs(petsQuery);
@@ -50,14 +55,16 @@ export default function HomeScreen() {
       });
       setPets(fetchedPets);
     } catch (error) {
-      console.error("Error fetching pets:", error);
+      console.error('Error fetching pets:', error);
+    } finally {
+      setLoading(false);
     }
   };
 
   const rotate = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-    outputRange: ["-10deg", "0deg", "10deg"],
-    extrapolate: "clamp",
+    outputRange: ['-10deg', '0deg', '10deg'],
+    extrapolate: 'clamp',
   });
 
   const rotateAndTranslate = {
@@ -72,25 +79,25 @@ export default function HomeScreen() {
   const likeOpacity = position.x.interpolate({
     inputRange: [0, SCREEN_WIDTH / 4],
     outputRange: [0, 1],
-    extrapolate: "clamp",
+    extrapolate: 'clamp',
   });
 
   const nopeOpacity = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH / 4, 0],
     outputRange: [1, 0],
-    extrapolate: "clamp",
+    extrapolate: 'clamp',
   });
 
   const nextCardOpacity = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
     outputRange: [1, 0, 1],
-    extrapolate: "clamp",
+    extrapolate: 'clamp',
   });
 
   const nextCardScale = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
     outputRange: [1, 0.8, 1],
-    extrapolate: "clamp",
+    extrapolate: 'clamp',
   });
 
   const panResponder = useRef(
@@ -118,6 +125,7 @@ export default function HomeScreen() {
   ).current;
 
   const handleLike = useCallback(() => {
+    if (currentIndex >= pets.length) return;
     Vibration.vibrate(50);
     Animated.parallel([
       Animated.timing(position, {
@@ -132,17 +140,19 @@ export default function HomeScreen() {
       }),
     ]).start(() => {
       setCurrentIndex((prevIndex) => prevIndex + 1);
+      setCurrentImageIndex(0);
       position.setValue({ x: 0, y: 0 });
       opacity.setValue(1);
-      setLastAction("liked");
+      setLastAction('liked');
       if (Math.random() > 0.7) {
         setMatchAnimation(true);
         setTimeout(() => setMatchAnimation(false), 1500);
       }
     });
-  }, []);
+  }, [currentIndex, pets.length]);
 
   const handleNope = useCallback(() => {
+    if (currentIndex >= pets.length) return;
     Vibration.vibrate(50);
     Animated.parallel([
       Animated.timing(position, {
@@ -157,13 +167,15 @@ export default function HomeScreen() {
       }),
     ]).start(() => {
       setCurrentIndex((prevIndex) => prevIndex + 1);
+      setCurrentImageIndex(0);
       position.setValue({ x: 0, y: 0 });
       opacity.setValue(1);
-      setLastAction("noped");
+      setLastAction('noped');
     });
-  }, []);
+  }, [currentIndex, pets.length]);
 
   const handleSuperLike = useCallback(() => {
+    if (currentIndex >= pets.length) return;
     Vibration.vibrate([0, 50, 50, 50]);
     Animated.parallel([
       Animated.timing(position, {
@@ -178,15 +190,16 @@ export default function HomeScreen() {
       }),
     ]).start(() => {
       setCurrentIndex((prevIndex) => prevIndex + 1);
+      setCurrentImageIndex(0);
       position.setValue({ x: 0, y: 0 });
       opacity.setValue(1);
-      setLastAction("superliked");
+      setLastAction('superliked');
       if (Math.random() > 0.5) {
         setMatchAnimation(true);
         setTimeout(() => setMatchAnimation(false), 1500);
       }
     });
-  }, []);
+  }, [currentIndex, pets.length]);
 
   useEffect(() => {
     if (lastAction) {
@@ -213,138 +226,215 @@ export default function HomeScreen() {
     }).start();
   }, [showBio]);
 
+  const handleImagePress = useCallback(() => {
+    if (pets[currentIndex] && pets[currentIndex].images.length > 1) {
+      setCurrentImageIndex((prevIndex) => (prevIndex + 1) % pets[currentIndex].images.length);
+    }
+  }, [currentIndex, pets]);
+
+  const renderCarouselIndicators = useCallback(() => {
+    if (!pets[currentIndex]) return null;
+    const images = pets[currentIndex].images;
+    return (
+      <View style={styles.carouselIndicators}>
+        {images.map((_, index) => (
+          <View
+            key={index}
+            style={[
+              styles.carouselIndicator,
+              index === currentImageIndex && styles.carouselIndicatorActive,
+            ]}
+          />
+        ))}
+      </View>
+    );
+  }, [currentIndex, currentImageIndex, pets]);
+
   const renderPets = () => {
-    return pets
-      .map((pet, i) => {
-        if (i < currentIndex) {
-          return null;
-        } else if (i == currentIndex) {
-          return (
-            <Animated.View
-              {...panResponder.panHandlers}
-              key={pet.id}
-              style={[rotateAndTranslate, styles.animatedCard, { opacity }]}
+    if (loading) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#0000ff" />
+          <Text style={styles.loadingText}>Fetching pets...</Text>
+        </View>
+      );
+    }
+
+    if (pets.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No pets available at the moment.</Text>
+          <TouchableOpacity style={styles.refreshButton} onPress={fetchPets}>
+            <Text style={styles.refreshButtonText}>Refresh</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    if (currentIndex >= pets.length) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>No more pets to show.</Text>
+          <TouchableOpacity style={styles.refreshButton} onPress={() => {
+            setCurrentIndex(0);
+            fetchPets();
+          }}>
+            <Text style={styles.refreshButtonText}>Start Over</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return pets.map((pet, i) => {
+      if (i < currentIndex) {
+        return null;
+      } else if (i == currentIndex) {
+        return (
+          <Animated.View
+            {...panResponder.panHandlers}
+            key={pet.id}
+            style={[rotateAndTranslate, styles.animatedCard, { opacity }]}
+          >
+            <TouchableOpacity activeOpacity={0.9} onPress={handleImagePress}>
+              <Image style={styles.cardImage} source={{ uri: pet.images[currentImageIndex] }} />
+              {renderCarouselIndicators()}
+            </TouchableOpacity>
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.9)']}
+              style={styles.cardGradient}
             >
-              <Image style={styles.cardImage} source={{ uri: pet.mainImage }} />
-              <LinearGradient
-                colors={["transparent", "rgba(0,0,0,0.9)"]}
-                style={styles.cardGradient}
-              >
-                <Text style={styles.cardName}>
-                  {pet.name}, {pet.age}
-                </Text>
-              </LinearGradient>
-              <Animated.View
-                style={[styles.likeTextContainer, { opacity: likeOpacity }]}
-              >
-                <BlurView intensity={100} style={styles.blurView}>
-                  <Text style={styles.likeText}>LIKE</Text>
-                </BlurView>
-              </Animated.View>
-              <Animated.View
-                style={[styles.nopeTextContainer, { opacity: nopeOpacity }]}
-              >
-                <BlurView intensity={100} style={styles.blurView}>
-                  <Text style={styles.nopeText}>NOPE</Text>
-                </BlurView>
-              </Animated.View>
-              <TouchableOpacity style={styles.bioButton} onPress={toggleBio}>
-                <IconButton icon="information" size={24} iconColor="white" />
-              </TouchableOpacity>
-              <Animated.View
-                style={[
-                  styles.bioContainer,
-                  {
-                    transform: [
-                      {
-                        translateY: bioAnimation.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [300, 0],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <BlurView intensity={100} style={styles.bioBlurView}>
-                  <Text style={styles.bioText}>{pet.notes}</Text>
-                </BlurView>
-              </Animated.View>
-            </Animated.View>
-          );
-        } else {
-          return (
+              <Text style={styles.cardName}>
+                {pet.name}, {pet.age}
+              </Text>
+              <Text style={styles.cardSpecies}>{pet.species}</Text>
+              <View style={styles.tagsContainer}>
+                {pet.tags.map((tag, index) => (
+                  <View key={index} style={styles.tag}>
+                    <Text style={styles.tagText}>{tag}</Text>
+                  </View>
+                ))}
+              </View>
+            </LinearGradient>
             <Animated.View
-              key={pet.id}
+              style={[styles.likeTextContainer, { opacity: likeOpacity }]}
+            >
+              <BlurView intensity={100} style={styles.blurView}>
+                <Text style={styles.likeText}>LIKE</Text>
+              </BlurView>
+            </Animated.View>
+            <Animated.View
+              style={[styles.nopeTextContainer, { opacity: nopeOpacity }]}
+            >
+              <BlurView intensity={100} style={styles.blurView}>
+                <Text style={styles.nopeText}>NOPE</Text>
+              </BlurView>
+            </Animated.View>
+            <TouchableOpacity style={styles.bioButton} onPress={toggleBio}>
+              <IconButton icon="information" size={24} iconColor="white" />
+            </TouchableOpacity>
+            <Animated.View
               style={[
+                styles.bioContainer,
                 {
-                  opacity: nextCardOpacity,
-                  transform: [{ scale: nextCardScale }],
+                  transform: [
+                    {
+                      translateY: bioAnimation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [300, 0],
+                      }),
+                    },
+                  ],
                 },
-                styles.animatedCard,
               ]}
             >
-              <Image style={styles.cardImage} source={{ uri: pet.mainImage }} />
-              <LinearGradient
-                colors={["transparent", "rgba(0,0,0,0.9)"]}
-                style={styles.cardGradient}
-              >
-                <Text style={styles.cardName}>
-                  {pet.name}, {pet.age}
-                </Text>
-              </LinearGradient>
+              <BlurView intensity={100} style={styles.bioBlurView}>
+                <ScrollView>
+                  <Text style={styles.bioText}>{pet.notes}</Text>
+                  <Text style={styles.bioInfoText}>Match Rate: {pet.matchRate}</Text>
+                  <Text style={styles.bioInfoText}>Last Activity: {pet.lastActivity}</Text>
+                  <Text style={styles.bioInfoText}>Vaccinated: {pet.vaccinated ? 'Yes' : 'No'}</Text>
+                  <Text style={styles.bioInfoText}>Profile Complete: {pet.profileComplete ? 'Yes' : 'No'}</Text>
+                </ScrollView>
+              </BlurView>
             </Animated.View>
-          );
-        }
-      })
-      .reverse();
+          </Animated.View>
+        );
+      } else {
+        return (
+          <Animated.View
+            key={pet.id}
+            style={[
+              {
+                opacity: nextCardOpacity,
+                transform: [{ scale: nextCardScale }],
+              },
+              styles.animatedCard,
+            ]}
+          >
+            <Image style={styles.cardImage} source={{ uri: pet.images[0] }} />
+            <LinearGradient
+              colors={['transparent', 'rgba(0,0,0,0.9)']}
+              style={styles.cardGradient}
+            >
+              <Text style={styles.cardName}>
+                {pet.name}, {pet.age}
+              </Text>
+              <Text style={styles.cardSpecies}>{pet.species}</Text>
+            </LinearGradient>
+          </Animated.View>
+        );
+      }
+    }).reverse();
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.cardContainer}>{renderPets()}</View>
-      <View style={styles.bottomContainer}>
-        <IconButton
-          icon="refresh"
-          size={30}
-          iconColor="#FBD88B"
-          style={[styles.button, styles.smallButton]}
-          onPress={() => {
-            Vibration.vibrate(30);
-            setCurrentIndex(0);
-          }}
-        />
-        <IconButton
-          icon="close"
-          size={40}
-          iconColor="#EC5E6F"
-          style={[styles.button, styles.largeButton]}
-          onPress={handleNope}
-        />
-        <IconButton
-          icon="star"
-          size={30}
-          iconColor="#3AB4CC"
-          style={[styles.button, styles.smallButton]}
-          onPress={handleSuperLike}
-        />
-        <IconButton
-          icon="heart"
-          size={40}
-          iconColor="#4CCC93"
-          style={[styles.button, styles.largeButton]}
-          onPress={handleLike}
-        />
-        <IconButton
-          icon="flash"
-          size={30}
-          iconColor="#915DD1"
-          style={[styles.button, styles.smallButton]}
-          onPress={() => {
-            Vibration.vibrate(30);
-          }}
-        />
-      </View>
+      {!loading && pets.length > 0 && currentIndex < pets.length && (
+        <View style={styles.bottomContainer}>
+          <IconButton
+            icon="refresh"
+            size={30}
+            iconColor="#FBD88B"
+            style={[styles.button, styles.smallButton]}
+            onPress={() => {
+              Vibration.vibrate(30);
+              setCurrentIndex(0);
+              setCurrentImageIndex(0);
+            }}
+          />
+          <IconButton
+            icon="close"
+            size={40}
+            iconColor="#EC5E6F"
+            style={[styles.button, styles.largeButton]}
+            onPress={handleNope}
+          />
+          <IconButton
+            icon="star"
+            size={30}
+            iconColor="#3AB4CC"
+            style={[styles.button, styles.smallButton]}
+            onPress={handleSuperLike}
+          />
+          <IconButton
+            icon="heart"
+            size={40}
+            iconColor="#4CCC93"
+            style={[styles.button, styles.largeButton]}
+            onPress={handleLike}
+          />
+          <IconButton
+            icon="flash"
+            size={30}
+            iconColor="#915DD1"
+            style={[styles.button, styles.smallButton]}
+            onPress={() => {
+              Vibration.vibrate(30);
+            }}
+          />
+        </View>
+      )}
       {matchAnimation && (
         <BlurView intensity={100} style={styles.matchAnimation}>
           <Text style={styles.matchText}>It's a Match!</Text>
@@ -354,11 +444,11 @@ export default function HomeScreen() {
         <Animated.View style={styles.actionFeedback}>
           <BlurView intensity={100} style={styles.blurView}>
             <Text style={styles.actionText}>
-              {lastAction === "liked"
-                ? "Liked!"
-                : lastAction === "noped"
-                ? "Noped!"
-                : "Super Liked!"}
+              {lastAction === 'liked'
+                ? 'Liked!'
+                : lastAction === 'noped'
+                ? 'Noped!'
+                : 'Super Liked!'}
             </Text>
           </BlurView>
         </Animated.View>
@@ -370,28 +460,28 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: '#f5f5f5',
   },
   cardContainer: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   animatedCard: {
     height: SCREEN_HEIGHT - 200,
     width: SCREEN_WIDTH - 40,
     padding: 10,
-    position: "absolute",
+    position: 'absolute',
   },
   cardImage: {
     flex: 1,
     height: null,
     width: null,
-    resizeMode: "cover",
+    resizeMode: 'cover',
     borderRadius: 20,
   },
   cardGradient: {
-    position: "absolute",
+    position: 'absolute',
     left: 10,
     right: 10,
     bottom: 10,
@@ -400,24 +490,46 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 20,
     paddingHorizontal: 16,
     paddingBottom: 16,
-    justifyContent: "flex-end",
+    justifyContent: 'flex-end',
   },
   cardName: {
     fontSize: 30,
-    color: "white",
-    fontWeight: "bold",
+    color: 'white',
+    fontWeight: 'bold',
+  },
+  cardSpecies: {
+    fontSize: 18,
+    color: 'white',
+    marginBottom: 8,
+  },
+  tagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  tag: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  tagText: {
+    color: 'white',
+    fontSize: 12,
   },
   bottomContainer: {
     height: 120,
-    flexDirection: "row",
-    justifyContent: "space-evenly",
-    alignItems: "center",
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    alignItems: 'center',
   },
   button: {
-    backgroundColor: "white",
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000",
+    backgroundColor: 'white',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 2,
@@ -437,89 +549,145 @@ const styles = StyleSheet.create({
     borderRadius: 32.5,
   },
   likeTextContainer: {
-    position: "absolute",
+    position: 'absolute',
     top: 50,
     left: 40,
     zIndex: 1000,
-    transform: [{ rotate: "-30deg" }],
+    transform: [{ rotate: '-30deg' }],
   },
   nopeTextContainer: {
-    position: "absolute",
+    position: 'absolute',
     top: 50,
     right: 40,
     zIndex: 1000,
-    transform: [{ rotate: "30deg" }],
+    transform: [{ rotate: '30deg' }],
   },
   likeText: {
     borderWidth: 2,
-    borderColor: "#4CCC93",
-    color: "#4CCC93",
+    borderColor: '#4CCC93',
+    color: '#4CCC93',
     fontSize: 32,
-    fontWeight: "800",
+    fontWeight: '800',
     padding: 10,
   },
   nopeText: {
     borderWidth: 2,
-    borderColor: "#EC5E6F",
-    color: "#EC5E6F",
+    borderColor: '#EC5E6F',
+    color: '#EC5E6F',
     fontSize: 32,
-    fontWeight: "800",
+    fontWeight: '800',
     padding: 10,
   },
   matchAnimation: {
-    position: "absolute",
+    position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   matchText: {
-    color: "white",
+    color: 'white',
     fontSize: 48,
-    fontWeight: "bold",
+    fontWeight: 'bold',
   },
   actionFeedback: {
-    position: "absolute",
+    position: 'absolute',
     top: 50,
     left: 0,
     right: 0,
-    alignItems: "center",
+    alignItems: 'center',
   },
   actionText: {
     fontSize: 24,
-    fontWeight: "bold",
-    color: "#4CCC93",
+    fontWeight: 'bold',
+    color: '#4CCC93',
   },
   blurView: {
     borderRadius: 20,
-    overflow: "hidden",
+    overflow: 'hidden',
     padding: 10,
   },
   bioButton: {
-    position: "absolute",
+    position: 'absolute',
     bottom: 20,
     right: 20,
     zIndex: 1000,
   },
   bioContainer: {
-    position: "absolute",
+    position: 'absolute',
     bottom: 0,
     left: 10,
     right: 10,
     padding: 20,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    overflow: "hidden",
+    overflow: 'hidden',
   },
   bioBlurView: {
     padding: 20,
     borderRadius: 20,
+    maxHeight: 300,
   },
   bioText: {
     fontSize: 16,
-    color: "white",
-    textAlign: "center",
+    color: 'white',
+    marginBottom: 10,
+  },
+  bioInfoText: {
+    fontSize: 14,
+    color: 'white',
+    marginBottom: 5,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#333',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyText: {
+    fontSize: 18,
+    color: '#333',
+    marginBottom: 20,
+  },
+  refreshButton: {
+    backgroundColor: '#4CCC93',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 5,
+  },
+  refreshButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  carouselIndicators: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  carouselIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.4)',
+    marginHorizontal: 4,
+  },
+  carouselIndicatorActive: {
+    backgroundColor: 'white',
   },
 });
+
