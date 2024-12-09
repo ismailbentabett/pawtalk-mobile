@@ -39,7 +39,7 @@ export default function BottomTabNavigator() {
         component={HomeScreen}
         options={{
           title: "Home",
-          tabBarLabel: "Dashboard",
+          tabBarLabel: "Home",
         }}
       />
       <Tab.Screen
