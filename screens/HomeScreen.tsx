@@ -13,50 +13,16 @@ import {
 import { IconButton } from "react-native-paper";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import { collection, getDocs, query, where, limit } from "firebase/firestore";
+import { db } from "../config/firebase";
+import { Pet } from "../types/Pet";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 
 const SWIPE_THRESHOLD = 120;
 
-const Users = [
-  {
-    id: "1",
-    name: "Sarah",
-    age: 28,
-    bio: "Adventure seeker and coffee enthusiast",
-    uri: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80",
-  },
-  {
-    id: "2",
-    name: "Jake",
-    age: 32,
-    bio: "Photographer and world traveler",
-    uri: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80",
-  },
-  {
-    id: "3",
-    name: "Emma",
-    age: 25,
-    bio: "Yoga instructor and nature lover",
-    uri: "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80",
-  },
-  {
-    id: "4",
-    name: "Alex",
-    age: 30,
-    bio: "Tech entrepreneur and fitness enthusiast",
-    uri: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80",
-  },
-  {
-    id: "5",
-    name: "Olivia",
-    age: 27,
-    bio: "Artist and animal lover",
-    uri: "https://images.unsplash.com/photo-1488426862026-3ee34a7d66df?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80",
-  },
-];
-
 export default function HomeScreen() {
+  const [pets, setPets] = useState<Pet[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [lastAction, setLastAction] = useState<string | null>(null);
   const [matchAnimation, setMatchAnimation] = useState(false);
@@ -65,6 +31,28 @@ export default function HomeScreen() {
   const scale = useRef(new Animated.Value(0.9)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const bioAnimation = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    fetchPets();
+  }, []);
+
+  const fetchPets = async () => {
+    try {
+      const petsQuery = query(
+        collection(db, "pets"),
+        where("status", "==", "Active"),
+        limit(10)
+      );
+      const querySnapshot = await getDocs(petsQuery);
+      const fetchedPets: Pet[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedPets.push({ id: doc.id, ...doc.data() } as Pet);
+      });
+      setPets(fetchedPets);
+    } catch (error) {
+      console.error("Error fetching pets:", error);
+    }
+  };
 
   const rotate = position.x.interpolate({
     inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
@@ -146,7 +134,7 @@ export default function HomeScreen() {
       setCurrentIndex((prevIndex) => prevIndex + 1);
       position.setValue({ x: 0, y: 0 });
       opacity.setValue(1);
-      setLastAction('liked');
+      setLastAction("liked");
       if (Math.random() > 0.7) {
         setMatchAnimation(true);
         setTimeout(() => setMatchAnimation(false), 1500);
@@ -171,7 +159,7 @@ export default function HomeScreen() {
       setCurrentIndex((prevIndex) => prevIndex + 1);
       position.setValue({ x: 0, y: 0 });
       opacity.setValue(1);
-      setLastAction('noped');
+      setLastAction("noped");
     });
   }, []);
 
@@ -192,7 +180,7 @@ export default function HomeScreen() {
       setCurrentIndex((prevIndex) => prevIndex + 1);
       position.setValue({ x: 0, y: 0 });
       opacity.setValue(1);
-      setLastAction('superliked');
+      setLastAction("superliked");
       if (Math.random() > 0.5) {
         setMatchAnimation(true);
         setTimeout(() => setMatchAnimation(false), 1500);
@@ -225,94 +213,96 @@ export default function HomeScreen() {
     }).start();
   }, [showBio]);
 
-  const renderUsers = () => {
-    return Users.map((item, i) => {
-      if (i < currentIndex) {
-        return null;
-      } else if (i == currentIndex) {
-        return (
-          <Animated.View
-            {...panResponder.panHandlers}
-            key={item.id}
-            style={[rotateAndTranslate, styles.animatedCard, { opacity }]}
-          >
-            <Image style={styles.cardImage} source={{ uri: item.uri }} />
-            <LinearGradient
-              colors={["transparent", "rgba(0,0,0,0.9)"]}
-              style={styles.cardGradient}
-            >
-              <Text style={styles.cardName}>
-                {item.name}, {item.age}
-              </Text>
-            </LinearGradient>
+  const renderPets = () => {
+    return pets
+      .map((pet, i) => {
+        if (i < currentIndex) {
+          return null;
+        } else if (i == currentIndex) {
+          return (
             <Animated.View
-              style={[styles.likeTextContainer, { opacity: likeOpacity }]}
+              {...panResponder.panHandlers}
+              key={pet.id}
+              style={[rotateAndTranslate, styles.animatedCard, { opacity }]}
             >
-              <BlurView intensity={100} style={styles.blurView}>
-                <Text style={styles.likeText}>LIKE</Text>
-              </BlurView>
+              <Image style={styles.cardImage} source={{ uri: pet.mainImage }} />
+              <LinearGradient
+                colors={["transparent", "rgba(0,0,0,0.9)"]}
+                style={styles.cardGradient}
+              >
+                <Text style={styles.cardName}>
+                  {pet.name}, {pet.age}
+                </Text>
+              </LinearGradient>
+              <Animated.View
+                style={[styles.likeTextContainer, { opacity: likeOpacity }]}
+              >
+                <BlurView intensity={100} style={styles.blurView}>
+                  <Text style={styles.likeText}>LIKE</Text>
+                </BlurView>
+              </Animated.View>
+              <Animated.View
+                style={[styles.nopeTextContainer, { opacity: nopeOpacity }]}
+              >
+                <BlurView intensity={100} style={styles.blurView}>
+                  <Text style={styles.nopeText}>NOPE</Text>
+                </BlurView>
+              </Animated.View>
+              <TouchableOpacity style={styles.bioButton} onPress={toggleBio}>
+                <IconButton icon="information" size={24} iconColor="white" />
+              </TouchableOpacity>
+              <Animated.View
+                style={[
+                  styles.bioContainer,
+                  {
+                    transform: [
+                      {
+                        translateY: bioAnimation.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [300, 0],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              >
+                <BlurView intensity={100} style={styles.bioBlurView}>
+                  <Text style={styles.bioText}>{pet.notes}</Text>
+                </BlurView>
+              </Animated.View>
             </Animated.View>
+          );
+        } else {
+          return (
             <Animated.View
-              style={[styles.nopeTextContainer, { opacity: nopeOpacity }]}
-            >
-              <BlurView intensity={100} style={styles.blurView}>
-                <Text style={styles.nopeText}>NOPE</Text>
-              </BlurView>
-            </Animated.View>
-            <TouchableOpacity style={styles.bioButton} onPress={toggleBio}>
-              <IconButton icon="information" size={24} iconColor="white" />
-            </TouchableOpacity>
-            <Animated.View
+              key={pet.id}
               style={[
-                styles.bioContainer,
                 {
-                  transform: [
-                    {
-                      translateY: bioAnimation.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [300, 0],
-                      }),
-                    },
-                  ],
+                  opacity: nextCardOpacity,
+                  transform: [{ scale: nextCardScale }],
                 },
+                styles.animatedCard,
               ]}
             >
-              <BlurView intensity={100} style={styles.bioBlurView}>
-                <Text style={styles.bioText}>{item.bio}</Text>
-              </BlurView>
+              <Image style={styles.cardImage} source={{ uri: pet.mainImage }} />
+              <LinearGradient
+                colors={["transparent", "rgba(0,0,0,0.9)"]}
+                style={styles.cardGradient}
+              >
+                <Text style={styles.cardName}>
+                  {pet.name}, {pet.age}
+                </Text>
+              </LinearGradient>
             </Animated.View>
-          </Animated.View>
-        );
-      } else {
-        return (
-          <Animated.View
-            key={item.id}
-            style={[
-              {
-                opacity: nextCardOpacity,
-                transform: [{ scale: nextCardScale }],
-              },
-              styles.animatedCard,
-            ]}
-          >
-            <Image style={styles.cardImage} source={{ uri: item.uri }} />
-            <LinearGradient
-              colors={["transparent", "rgba(0,0,0,0.9)"]}
-              style={styles.cardGradient}
-            >
-              <Text style={styles.cardName}>
-                {item.name}, {item.age}
-              </Text>
-            </LinearGradient>
-          </Animated.View>
-        );
-      }
-    }).reverse();
+          );
+        }
+      })
+      .reverse();
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.cardContainer}>{renderUsers()}</View>
+      <View style={styles.cardContainer}>{renderPets()}</View>
       <View style={styles.bottomContainer}>
         <IconButton
           icon="refresh"
@@ -533,4 +523,3 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 });
-
