@@ -51,6 +51,26 @@ export default function HomeScreen() {
   const opacity = useRef(new Animated.Value(1)).current;
   const bioAnimation = useRef(new Animated.Value(0)).current;
 
+  const formatTimestamp = (timestamp: any) => {
+    if (!timestamp) return "N/A";
+    if (timestamp instanceof Date) return timestamp.toLocaleDateString();
+    if (timestamp.seconds) {
+      return new Date(timestamp.seconds * 1000).toLocaleDateString();
+    }
+    return "N/A";
+  };
+
+  const getImageArray = (pet: Pet): string[] => {
+    const images: string[] = [];
+    if (pet.images.main) {
+      images.push(pet.images.main);
+    }
+    if (pet.images.additional && Array.isArray(pet.images.additional)) {
+      images.push(...pet.images.additional);
+    }
+    return images;
+  };
+
   useEffect(() => {
     fetchPets();
   }, []);
@@ -69,19 +89,24 @@ export default function HomeScreen() {
         collection(db, "matches"),
         where("userId", "==", userId)
       );
+
       const matchesSnapshot = await getDocs(matchesQuery);
       const matchedPetIds = matchesSnapshot.docs.map((doc) => doc.data().petId);
 
-      if (matchedPetIds.length === 0) {
-        matchedPetIds.push("placeholder");
-      }
-
-      const petsQuery = query(
-        collection(db, "pets"),
-        where("status", "==", "Active"),
-        where("id", "not-in", matchedPetIds),
-        limit(10)
-      );
+      // Create the appropriate query based on whether we have matches
+      const petsQuery =
+        matchedPetIds.length > 0
+          ? query(
+              collection(db, "pets"),
+              where("status", "==", "available"),
+              where("id", "not-in", matchedPetIds),
+              limit(10)
+            )
+          : query(
+              collection(db, "pets"),
+              where("status", "==", "available"),
+              limit(10)
+            );
 
       const querySnapshot = await getDocs(petsQuery);
       const fetchedPets: Pet[] = [];
@@ -95,7 +120,7 @@ export default function HomeScreen() {
           updatedAt: (petData.updatedAt as Timestamp).toDate(),
         } as Pet);
       });
-
+      console.log(fetchedPets);
       setPets(fetchedPets);
     } catch (error) {
       console.error("Error fetching pets:", error);
@@ -269,10 +294,11 @@ export default function HomeScreen() {
   }, [showBio]);
 
   const handleImagePress = useCallback(() => {
-    if (pets[currentIndex] && pets[currentIndex].images.length > 1) {
-      setCurrentImageIndex(
-        (prevIndex) => (prevIndex + 1) % pets[currentIndex].images.length
-      );
+    if (pets[currentIndex]) {
+      const images = getImageArray(pets[currentIndex]);
+      if (images.length > 1) {
+        setCurrentImageIndex((prevIndex) => (prevIndex + 1) % images.length);
+      }
     }
   }, [currentIndex, pets]);
 
@@ -348,7 +374,8 @@ export default function HomeScreen() {
 
   const renderCarouselIndicators = useCallback(() => {
     if (!pets[currentIndex]) return null;
-    const images = pets[currentIndex].images;
+    const images = getImageArray(pets[currentIndex]);
+
     return (
       <View style={styles.carouselIndicators}>
         {images.map((_, index) => (
@@ -421,6 +448,8 @@ export default function HomeScreen() {
         if (i < currentIndex) {
           return null;
         } else if (i == currentIndex) {
+          const images = getImageArray(pet);
+
           return (
             <Animated.View
               {...panResponder.panHandlers}
@@ -430,7 +459,7 @@ export default function HomeScreen() {
               <TouchableOpacity activeOpacity={0.9} onPress={handleImagePress}>
                 <Image
                   style={styles.cardImage}
-                  source={{ uri: pet.images[currentImageIndex] }}
+                  source={{ uri: getImageArray(pet)[currentImageIndex] }}
                   resizeMode="cover"
                 />
                 {renderCarouselIndicators()}
@@ -442,13 +471,17 @@ export default function HomeScreen() {
                 <Text style={styles.cardName}>
                   {pet.name}, {pet.age}
                 </Text>
-                <Text style={styles.cardSpecies}>{pet.species}</Text>
-                <View style={styles.tagsContainer}>
-                  {pet.tags.map((tag, index) => (
-                    <View key={index} style={styles.tag}>
-                      <Text style={styles.tagText}>{tag}</Text>
-                    </View>
-                  ))}
+                <Text style={styles.cardSpecies}>
+                  {pet.breed} · {pet.type}
+                </Text>
+                <Text style={styles.cardLocation}>
+                  {pet.location.city}, {pet.location.country}
+                </Text>
+                <View style={styles.cardDetails}>
+                  <Text style={styles.cardDetailText}>
+                    {pet.gender} ·{" "}
+                    {pet.vaccinated ? "Vaccinated" : "Not Vaccinated"}
+                  </Text>
                 </View>
               </LinearGradient>
               <Animated.View
@@ -485,19 +518,39 @@ export default function HomeScreen() {
               >
                 <BlurView intensity={100} style={styles.bioBlurView}>
                   <ScrollView>
-                    <Text style={styles.bioText}>{pet.notes}</Text>
-                    <Text style={styles.bioInfoText}>
-                      Match Rate: {pet.matchRate}
-                    </Text>
-                    <Text style={styles.bioInfoText}>
-                      Last Activity: {pet.lastActivity}
-                    </Text>
-                    <Text style={styles.bioInfoText}>
-                      Vaccinated: {pet.vaccinated ? "Yes" : "No"}
-                    </Text>
-                    <Text style={styles.bioInfoText}>
-                      Profile Complete: {pet.profileComplete ? "Yes" : "No"}
-                    </Text>
+                    <Text style={styles.bioText}>{pet.description}</Text>
+                    <View style={styles.bioInfoSection}>
+                      <Text style={styles.bioInfoTitle}>
+                        Health Information
+                      </Text>
+                      <Text style={styles.bioInfoText}>
+                        Microchipped: {pet.microchipped ? "Yes" : "No"}
+                      </Text>
+                      <Text style={styles.bioInfoText}>
+                        Neutered: {pet.neutered ? "Yes" : "No"}
+                      </Text>
+                      <Text style={styles.bioInfoText}>
+                        Vaccinated: {pet.vaccinated ? "Yes" : "No"}
+                      </Text>
+                    </View>
+                    <View style={styles.bioInfoSection}>
+                      <Text style={styles.bioInfoTitle}>
+                        Additional Details
+                      </Text>
+                      <Text style={styles.bioInfoText}>
+                        Adoption Fee: ${pet.adoptionFee}
+                      </Text>
+                      <Text style={styles.bioInfoText}>
+                        Location: {pet.location.city}, {pet.location.state},{" "}
+                        {pet.location.country}
+                      </Text>
+                      <Text style={styles.bioInfoText}>
+                        Status: {pet.status}
+                      </Text>
+                      <Text style={styles.bioInfoText}>
+                        Added: {pet.createdAt.toLocaleDateString()}
+                      </Text>
+                    </View>
                   </ScrollView>
                 </BlurView>
               </Animated.View>
@@ -517,7 +570,7 @@ export default function HomeScreen() {
             >
               <Image
                 style={styles.cardImage}
-                source={{ uri: pet.images[0] }}
+                source={{ uri: pet.images.main }}
                 resizeMode="cover"
               />
               <LinearGradient
@@ -527,7 +580,9 @@ export default function HomeScreen() {
                 <Text style={styles.cardName}>
                   {pet.name}, {pet.age}
                 </Text>
-                <Text style={styles.cardSpecies}>{pet.species}</Text>
+                <Text style={styles.cardSpecies}>
+                  {pet.breed} · {pet.type}
+                </Text>
               </LinearGradient>
             </Animated.View>
           );
@@ -607,67 +662,111 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f5f5f5",
   },
+
   cardContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
+
   animatedCard: {
-    height: SCREEN_HEIGHT - 200,
-    width: SCREEN_WIDTH - 40,
-    padding: 10,
+    height: SCREEN_HEIGHT - 160,
+    width: SCREEN_WIDTH - 32,
     position: "absolute",
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
+
   cardImage: {
     width: "100%",
     height: "100%",
-    borderRadius: 20,
+    backgroundColor: "#e1e1e1",
   },
+
   cardGradient: {
     position: "absolute",
-    left: 10,
-    right: 10,
-    bottom: 10,
-    height: 200,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 240,
+    paddingHorizontal: 20,
+    paddingBottom: 20,
     justifyContent: "flex-end",
   },
+
   cardName: {
-    fontSize: 30,
+    fontSize: 32,
     color: "white",
     fontWeight: "bold",
+    marginBottom: 4,
   },
+
   cardSpecies: {
     fontSize: 18,
     color: "white",
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  tagsContainer: {
+
+  cardLocation: {
+    fontSize: 16,
+    color: "white",
+    marginBottom: 8,
+    opacity: 0.9,
+  },
+
+  cardDetails: {
     flexDirection: "row",
+    alignItems: "center",
     flexWrap: "wrap",
     marginTop: 8,
   },
+
+  cardDetailText: {
+    color: "white",
+    fontSize: 14,
+    opacity: 0.9,
+    marginRight: 8,
+  },
+
+  tagsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 12,
+  },
+
   tag: {
     backgroundColor: "rgba(255, 255, 255, 0.3)",
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     marginRight: 8,
     marginBottom: 8,
   },
+
   tagText: {
     color: "white",
     fontSize: 12,
+    fontWeight: "600",
   },
+
   bottomContainer: {
-    height: 120,
+    height: 100,
     flexDirection: "row",
     justifyContent: "space-evenly",
     alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
+
   button: {
     backgroundColor: "white",
     justifyContent: "center",
@@ -681,46 +780,55 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
+
   smallButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
   },
+
   largeButton: {
-    width: 65,
-    height: 65,
-    borderRadius: 32.5,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
   },
+
   likeTextContainer: {
     position: "absolute",
-    top: 50,
+    top: 60,
     left: 40,
     zIndex: 1000,
     transform: [{ rotate: "-30deg" }],
   },
+
   nopeTextContainer: {
     position: "absolute",
-    top: 50,
+    top: 60,
     right: 40,
     zIndex: 1000,
     transform: [{ rotate: "30deg" }],
   },
+
   likeText: {
-    borderWidth: 2,
+    borderWidth: 4,
     borderColor: "#4CCC93",
     color: "#4CCC93",
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: "800",
-    padding: 10,
+    padding: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
   },
+
   nopeText: {
-    borderWidth: 2,
+    borderWidth: 4,
     borderColor: "#EC5E6F",
     color: "#EC5E6F",
-    fontSize: 32,
+    fontSize: 36,
     fontWeight: "800",
-    padding: 10,
+    padding: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.8)",
   },
+
   matchAnimation: {
     position: "absolute",
     top: 0,
@@ -729,12 +837,16 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.8)",
   },
+
   matchText: {
     color: "white",
     fontSize: 48,
     fontWeight: "bold",
+    textAlign: "center",
   },
+
   actionFeedback: {
     position: "absolute",
     top: 50,
@@ -742,102 +854,136 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: "center",
   },
+
   actionText: {
     fontSize: 24,
     fontWeight: "bold",
     color: "#4CCC93",
   },
+
   blurView: {
     borderRadius: 20,
     overflow: "hidden",
-    padding: 10,
+    padding: 16,
   },
+
   bioButton: {
     position: "absolute",
     bottom: 20,
     right: 20,
     zIndex: 1000,
   },
+
   bioContainer: {
     position: "absolute",
     bottom: 0,
-    left: 10,
-    right: 10,
-    padding: 20,
+    left: 0,
+    right: 0,
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     overflow: "hidden",
   },
+
   bioBlurView: {
-    padding: 20,
+    padding: 24,
     borderRadius: 20,
-    maxHeight: 300,
+    maxHeight: SCREEN_HEIGHT * 0.6,
   },
+
   bioText: {
     fontSize: 16,
     color: "white",
-    marginBottom: 10,
+    marginBottom: 16,
+    lineHeight: 24,
   },
+
+  bioInfoSection: {
+    marginTop: 20,
+  },
+
+  bioInfoTitle: {
+    fontSize: 18,
+    color: "white",
+    fontWeight: "bold",
+    marginBottom: 12,
+  },
+
   bioInfoText: {
     fontSize: 14,
     color: "white",
-    marginBottom: 5,
+    marginBottom: 8,
+    lineHeight: 20,
+    opacity: 0.9,
   },
+
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
+
   loadingText: {
-    marginTop: 10,
+    marginTop: 12,
     fontSize: 16,
-    color: "#333",
+    color: "#666",
   },
+
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    padding: 24,
   },
+
   emptyText: {
     fontSize: 18,
-    color: "#333",
+    color: "#666",
     marginBottom: 20,
+    textAlign: "center",
   },
+
   refreshButton: {
     backgroundColor: "#4CCC93",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 5,
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
   },
+
   refreshButtonText: {
     color: "white",
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "600",
   },
+
   carouselIndicators: {
     position: "absolute",
-    top: 10,
-    left: 10,
-    right: 10,
+    top: 16,
+    left: 0,
+    right: 0,
     flexDirection: "row",
     justifyContent: "center",
   },
+
   carouselIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: "rgba(255, 255, 255, 0.4)",
     marginHorizontal: 4,
   },
+
   carouselIndicatorActive: {
     backgroundColor: "white",
+    width: 12,
   },
+
   errorContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    padding: 24,
   },
+
   errorText: {
     fontSize: 16,
     color: "#EC5E6F",
