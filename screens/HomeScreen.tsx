@@ -93,7 +93,6 @@ export default function HomeScreen() {
       const matchesSnapshot = await getDocs(matchesQuery);
       const matchedPetIds = matchesSnapshot.docs.map((doc) => doc.data().petId);
 
-      // Create the appropriate query based on whether we have matches
       const petsQuery =
         matchedPetIds.length > 0
           ? query(
@@ -459,7 +458,7 @@ export default function HomeScreen() {
               <TouchableOpacity activeOpacity={0.9} onPress={handleImagePress}>
                 <Image
                   style={styles.cardImage}
-                  source={{ uri: getImageArray(pet)[currentImageIndex] }}
+                  source={{ uri: images[currentImageIndex] }}
                   resizeMode="cover"
                 />
                 {renderCarouselIndicators()}
@@ -662,102 +661,74 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f5f5f5",
   },
-
   cardContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-
   animatedCard: {
-    height: SCREEN_HEIGHT - 160,
-    width: SCREEN_WIDTH - 32,
+    height: SCREEN_HEIGHT - 180,
+    width: SCREEN_WIDTH - 40,
     position: "absolute",
-    borderRadius: 20,
+    borderRadius: 24,
     overflow: "hidden",
     backgroundColor: "#fff",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 4,
     },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
+    elevation: 8,
   },
-
   cardImage: {
-    width: "100%",
-    height: "100%",
-    backgroundColor: "#e1e1e1",
+    width: SCREEN_WIDTH - 40,
+    height: SCREEN_HEIGHT - 180,
+    borderRadius: 24,
+    overflow: "hidden",
+    //cover : "cover"
+    resizeMode: "cover",
   },
-
   cardGradient: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    height: 240,
-    paddingHorizontal: 20,
-    paddingBottom: 20,
+    height: 200,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
     justifyContent: "flex-end",
   },
-
   cardName: {
     fontSize: 32,
     color: "white",
     fontWeight: "bold",
     marginBottom: 4,
   },
-
   cardSpecies: {
     fontSize: 18,
     color: "white",
     marginBottom: 4,
   },
-
   cardLocation: {
     fontSize: 16,
     color: "white",
     marginBottom: 8,
     opacity: 0.9,
   },
-
   cardDetails: {
     flexDirection: "row",
     alignItems: "center",
     flexWrap: "wrap",
     marginTop: 8,
   },
-
   cardDetailText: {
     color: "white",
     fontSize: 14,
     opacity: 0.9,
     marginRight: 8,
   },
-
-  tagsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 12,
-  },
-
-  tag: {
-    backgroundColor: "rgba(255, 255, 255, 0.3)",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-
-  tagText: {
-    color: "white",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-
   bottomContainer: {
     height: 100,
     flexDirection: "row",
@@ -766,7 +737,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
   },
-
   button: {
     backgroundColor: "white",
     justifyContent: "center",
@@ -780,19 +750,16 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-
   smallButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
   },
-
   largeButton: {
     width: 64,
     height: 64,
     borderRadius: 32,
   },
-
   likeTextContainer: {
     position: "absolute",
     top: 60,
@@ -800,7 +767,6 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     transform: [{ rotate: "-30deg" }],
   },
-
   nopeTextContainer: {
     position: "absolute",
     top: 60,
@@ -808,7 +774,6 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     transform: [{ rotate: "30deg" }],
   },
-
   likeText: {
     borderWidth: 4,
     borderColor: "#4CCC93",
@@ -818,7 +783,6 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: "rgba(255, 255, 255, 0.8)",
   },
-
   nopeText: {
     borderWidth: 4,
     borderColor: "#EC5E6F",
@@ -828,7 +792,6 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: "rgba(255, 255, 255, 0.8)",
   },
-
   matchAnimation: {
     position: "absolute",
     top: 0,
@@ -839,14 +802,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(0, 0, 0, 0.8)",
   },
-
   matchText: {
     color: "white",
     fontSize: 48,
     fontWeight: "bold",
     textAlign: "center",
   },
-
   actionFeedback: {
     position: "absolute",
     top: 50,
@@ -854,26 +815,22 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: "center",
   },
-
   actionText: {
     fontSize: 24,
     fontWeight: "bold",
     color: "#4CCC93",
   },
-
   blurView: {
     borderRadius: 20,
     overflow: "hidden",
     padding: 16,
   },
-
   bioButton: {
     position: "absolute",
     bottom: 20,
     right: 20,
     zIndex: 1000,
   },
-
   bioContainer: {
     position: "absolute",
     bottom: 0,
@@ -883,31 +840,26 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     overflow: "hidden",
   },
-
   bioBlurView: {
     padding: 24,
     borderRadius: 20,
     maxHeight: SCREEN_HEIGHT * 0.6,
   },
-
   bioText: {
     fontSize: 16,
     color: "white",
     marginBottom: 16,
     lineHeight: 24,
   },
-
   bioInfoSection: {
     marginTop: 20,
   },
-
   bioInfoTitle: {
     fontSize: 18,
     color: "white",
     fontWeight: "bold",
     marginBottom: 12,
   },
-
   bioInfoText: {
     fontSize: 14,
     color: "white",
@@ -915,46 +867,39 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     opacity: 0.9,
   },
-
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-
   loadingText: {
     marginTop: 12,
     fontSize: 16,
     color: "#666",
   },
-
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
   },
-
   emptyText: {
     fontSize: 18,
     color: "#666",
     marginBottom: 20,
     textAlign: "center",
   },
-
   refreshButton: {
     backgroundColor: "#4CCC93",
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 12,
   },
-
   refreshButtonText: {
     color: "white",
     fontSize: 16,
     fontWeight: "600",
   },
-
   carouselIndicators: {
     position: "absolute",
     top: 16,
@@ -963,7 +908,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "center",
   },
-
   carouselIndicator: {
     width: 6,
     height: 6,
@@ -971,19 +915,16 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.4)",
     marginHorizontal: 4,
   },
-
   carouselIndicatorActive: {
     backgroundColor: "white",
     width: 12,
   },
-
   errorContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     padding: 24,
   },
-
   errorText: {
     fontSize: 16,
     color: "#EC5E6F",
