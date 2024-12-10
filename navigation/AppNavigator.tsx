@@ -24,7 +24,13 @@ export default function AppNavigator() {
           headerShown: false,
         }}
       />
-      <AppStack.Screen name="ChatRoom" component={ChatRoomScreen} />
+      {/* export function ChatRoomScreen({ navigation, route }: Props) { */}
+
+      <AppStack.Screen
+        name="ChatRoom"
+        component={ChatRoomScreen}
+        options={{ headerShown: false }}
+      />
       <AppStack.Screen name="Settings" component={SettingsScreen} />
     </AppStack.Navigator>
   );
