@@ -5,7 +5,6 @@ import {
   Image,
   Dimensions,
   Animated,
-  PanResponder,
   Text,
   Vibration,
   TouchableOpacity,
@@ -33,11 +32,19 @@ import {
 import { db, auth } from "../config/firebase";
 import { Pet } from "../types/Pet";
 import { Match, MatchStatus } from "../types/Match";
+import { Message } from "../types/chat";
+import { Conversation, ConversationStatus } from "../types/Conversation";
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get("window");
 const SWIPE_THRESHOLD = 120;
 
+interface MatchOperation {
+  match: Match;
+  conversationId?: string;
+}
+
 export default function HomeScreen() {
+  // State management
   const [pets, setPets] = useState<Pet[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [lastAction, setLastAction] = useState<string | null>(null);
@@ -47,35 +54,21 @@ export default function HomeScreen() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  // Animations
   const position = useRef(new Animated.ValueXY()).current;
   const scale = useRef(new Animated.Value(0.9)).current;
   const opacity = useRef(new Animated.Value(1)).current;
   const bioAnimation = useRef(new Animated.Value(0)).current;
 
-  const formatTimestamp = (timestamp: any) => {
-    if (!timestamp) return "N/A";
-    if (timestamp instanceof Date) return timestamp.toLocaleDateString();
-    if (timestamp.seconds) {
-      return new Date(timestamp.seconds * 1000).toLocaleDateString();
-    }
-    return "N/A";
-  };
-
+  // Helper functions
   const getImageArray = (pet: Pet): string[] => {
     const images: string[] = [];
-    if (pet.images.main) {
-      images.push(pet.images.main);
-    }
-    if (pet.images.additional && Array.isArray(pet.images.additional)) {
-      images.push(...pet.images.additional);
-    }
+    if (pet.images?.main) images.push(pet.images.main);
+    if (pet.images?.additional?.length) images.push(...pet.images.additional);
     return images;
   };
 
-  useEffect(() => {
-    fetchPets();
-  }, []);
-
+  // Fetch pets
   const fetchPets = async () => {
     try {
       setLoading(true);
@@ -86,41 +79,36 @@ export default function HomeScreen() {
         throw new Error("User not authenticated");
       }
 
+      // Get already matched pets
       const matchesQuery = query(
         collection(db, "matches"),
         where("userId", "==", userId)
       );
-
       const matchesSnapshot = await getDocs(matchesQuery);
-      const matchedPetIds = matchesSnapshot.docs.map((doc) => doc.data().petId);
+      const matchedPetIds = matchesSnapshot.docs.map(doc => doc.data().petId);
 
-      const petsQuery =
-        matchedPetIds.length > 0
-          ? query(
-              collection(db, "pets"),
-              where("status", "==", "available"),
-              where("id", "not-in", matchedPetIds),
-              limit(10)
-            )
-          : query(
-              collection(db, "pets"),
-              where("status", "==", "available"),
-              limit(10)
-            );
+      // Query for available pets
+      const petsQuery = matchedPetIds.length > 0
+        ? query(
+            collection(db, "pets"),
+            where("status", "==", "available"),
+            where("id", "not-in", matchedPetIds),
+            limit(10)
+          )
+        : query(
+            collection(db, "pets"),
+            where("status", "==", "available"),
+            limit(10)
+          );
 
       const querySnapshot = await getDocs(petsQuery);
-      const fetchedPets: Pet[] = [];
+      const fetchedPets = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate(),
+        updatedAt: doc.data().updatedAt?.toDate(),
+      })) as Pet[];
 
-      querySnapshot.forEach((doc) => {
-        const petData = doc.data();
-        fetchedPets.push({
-          id: doc.id,
-          ...petData,
-          createdAt: (petData.createdAt as Timestamp).toDate(),
-          updatedAt: (petData.updatedAt as Timestamp).toDate(),
-        } as Pet);
-      });
-      console.log(fetchedPets);
       setPets(fetchedPets);
     } catch (error) {
       console.error("Error fetching pets:", error);
@@ -130,121 +118,161 @@ export default function HomeScreen() {
     }
   };
 
-  const createMatch = async (status: MatchStatus) => {
-    if (!auth.currentUser?.uid || currentIndex >= pets.length) return null;
+  // Initial load
+  useEffect(() => {
+    fetchPets();
+  }, []);
+
+  // Create initial message when matched
+  const createInitialMessage = async (
+    conversationId: string,
+    petId: string,
+    petName: string
+  ): Promise<void> => {
+    const messageRef = doc(collection(db, "messages"));
+    const message: Message = {
+      id: messageRef.id,
+      senderId: petId,
+      content: `Woof! I'm ${petName}! Thanks for matching with me! 🐾`,
+      createdAt: serverTimestamp() as Timestamp,
+      read: false,
+      type: "text",
+      conversationId
+    };
+
+    await setDoc(messageRef, message);
+  };
+
+  // Create conversation between user and pet
+  const createConversation = async (
+    userId: string,
+    pet: Pet
+  ): Promise<string> => {
+    const conversationRef = doc(collection(db, "conversations"));
+    const conversation: Conversation = {
+      id: conversationRef.id,
+      participants: [userId, pet.id],
+      petId: pet.id,
+      createdAt: serverTimestamp() as Timestamp,
+      lastMessageAt: serverTimestamp() as Timestamp,
+      status: "active" as ConversationStatus
+    };
+
+    await setDoc(conversationRef, conversation);
+    await createInitialMessage(conversationRef.id, pet.id, pet.name);
+    return conversationRef.id;
+  };
+
+  // Handle match creation
+  const createMatch = async (status: MatchStatus): Promise<MatchOperation | null> => {
+    const currentUser = auth.currentUser;
+    if (!currentUser?.uid || currentIndex >= pets.length) return null;
 
     try {
+      const currentPet = pets[currentIndex];
       const matchRef = doc(collection(db, "matches"));
+      
       const match: Match = {
         id: matchRef.id,
-        userId: auth.currentUser.uid,
-        petId: pets[currentIndex].id,
+        userId: currentUser.uid,
+        petId: currentPet.id,
         status,
         createdAt: serverTimestamp() as Timestamp,
       };
 
-      await updateDoc(doc(db, "pets", pets[currentIndex].id), {
-        lastActivity: serverTimestamp(),
-      });
-
+      // Check for match if liked
       if (status === "liked") {
         const existingMatchQuery = query(
           collection(db, "matches"),
-          where("petId", "==", pets[currentIndex].id),
-          where("userId", "==", auth.currentUser.uid),
+          where("petId", "==", currentPet.id),
+          where("userId", "==", currentUser.uid),
           where("status", "==", "liked")
         );
 
         const querySnapshot = await getDocs(existingMatchQuery);
         if (!querySnapshot.empty) {
+          // It's a match!
           match.status = "matched";
           match.matchedAt = serverTimestamp() as Timestamp;
 
+          // Create conversation and update stats
+          const conversationId = await createConversation(currentUser.uid, currentPet);
+          
           await Promise.all([
-            updateDoc(doc(db, "pets", pets[currentIndex].id), {
-              matches: arrayUnion(auth.currentUser.uid),
+            updateDoc(doc(db, "pets", currentPet.id), {
+              matches: arrayUnion(currentUser.uid),
               matchRate: increment(0.1),
+              lastActivity: serverTimestamp(),
             }),
-            updateDoc(doc(db, "users", auth.currentUser.uid), {
+            updateDoc(doc(db, "users", currentUser.uid), {
               "settings.lastMatch": serverTimestamp(),
             }),
           ]);
 
           setMatchAnimation(true);
           setTimeout(() => setMatchAnimation(false), 1500);
+          
+          await setDoc(matchRef, match);
+          return { match, conversationId };
         }
       }
 
+      // Save the match
       await setDoc(matchRef, match);
-      return match;
+      return { match };
     } catch (error) {
       console.error("Error creating match:", error);
-      return null;
+      throw error;
     }
   };
 
+  // Action handlers
   const handleLike = useCallback(async () => {
     if (currentIndex >= pets.length) return;
-
-    Vibration.vibrate(50);
-    await createMatch("liked");
-    setLastAction("liked");
+    try {
+      Vibration.vibrate(50);
+      await createMatch("liked");
+      setLastAction("liked");
+    } catch (err) {
+      setError("Failed to like pet");
+    }
   }, [currentIndex, pets.length]);
 
   const handleNope = useCallback(async () => {
     if (currentIndex >= pets.length) return;
-
-    Vibration.vibrate(50);
-    await createMatch("passed");
-    setLastAction("noped");
+    try {
+      Vibration.vibrate(50);
+      await createMatch("passed");
+      setLastAction("noped");
+    } catch (err) {
+      setError("Failed to pass pet");
+    }
   }, [currentIndex, pets.length]);
 
   const handleSuperLike = useCallback(async () => {
     if (currentIndex >= pets.length) return;
-
-    Vibration.vibrate([0, 50, 50, 50]);
-    const match = await createMatch("liked");
-
-    if (match) {
-      await updateDoc(doc(db, "pets", pets[currentIndex].id), {
-        superLikes: arrayUnion(auth.currentUser?.uid),
-        matchRate: increment(0.2),
-      });
+    try {
+      Vibration.vibrate([0, 50, 50, 50]);
+      const result = await createMatch("liked");
+      
+      if (result?.match) {
+        await updateDoc(doc(db, "pets", pets[currentIndex].id), {
+          superLikes: arrayUnion(auth.currentUser?.uid),
+          matchRate: increment(0.2),
+        });
+      }
+      
+      setLastAction("superliked");
+    } catch (err) {
+      setError("Failed to super like pet");
     }
-
-    setLastAction("superliked");
   }, [currentIndex, pets.length]);
-
-  useEffect(() => {
-    if (lastAction) {
-      const timer = setTimeout(() => setLastAction(null), 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [lastAction]);
-
-  useEffect(() => {
-    Animated.spring(scale, {
-      toValue: 1,
-      friction: 5,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
-  }, [currentIndex]);
-
-  const toggleBio = useCallback(() => {
-    setShowBio((prev) => !prev);
-    Animated.timing(bioAnimation, {
-      toValue: showBio ? 0 : 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-  }, [showBio]);
 
   const handleImagePress = useCallback(() => {
     if (pets[currentIndex]) {
       const images = getImageArray(pets[currentIndex]);
       if (images.length > 1) {
-        setCurrentImageIndex((prevIndex) => (prevIndex + 1) % images.length);
+        setCurrentImageIndex((prev) => (prev + 1) % images.length);
       }
     }
   }, [currentIndex, pets]);
@@ -255,6 +283,16 @@ export default function HomeScreen() {
     setCurrentImageIndex(0);
     await fetchPets();
   }, []);
+
+  // UI helpers
+  const toggleBio = useCallback(() => {
+    setShowBio((prev) => !prev);
+    Animated.timing(bioAnimation, {
+      toValue: showBio ? 0 : 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [showBio]);
 
   const renderCarouselIndicators = useCallback(() => {
     if (!pets[currentIndex]) return null;
@@ -267,7 +305,7 @@ export default function HomeScreen() {
             key={index}
             style={[
               styles.carouselIndicator,
-              index === currentImageIndex && styles.carouselIndicatorActive,
+              index === currentImageIndex && styles.carouselIndicatorActive
             ]}
           />
         ))}
@@ -288,6 +326,7 @@ export default function HomeScreen() {
           />
           {renderCarouselIndicators()}
         </TouchableOpacity>
+        
         <LinearGradient
           colors={["transparent", "rgba(0,0,0,0.9)"]}
           style={styles.cardGradient}
@@ -307,9 +346,11 @@ export default function HomeScreen() {
             </Text>
           </View>
         </LinearGradient>
+
         <TouchableOpacity style={styles.bioButton} onPress={toggleBio}>
           <IconButton icon="information" size={24} iconColor="white" />
         </TouchableOpacity>
+
         <Animated.View
           style={[
             styles.bioContainer,
@@ -361,7 +402,8 @@ export default function HomeScreen() {
     );
   };
 
-  const renderPets = () => {
+  // Main render conditions
+  const renderContent = () => {
     if (loading) {
       return (
         <View style={styles.loadingContainer}>
@@ -375,10 +417,7 @@ export default function HomeScreen() {
       return (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity
-            style={styles.refreshButton}
-            onPress={handleRefresh}
-          >
+          <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
             <Text style={styles.refreshButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
@@ -389,10 +428,7 @@ export default function HomeScreen() {
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No pets available at the moment.</Text>
-          <TouchableOpacity
-            style={styles.refreshButton}
-            onPress={handleRefresh}
-          >
+          <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
             <Text style={styles.refreshButtonText}>Refresh</Text>
           </TouchableOpacity>
         </View>
@@ -403,16 +439,12 @@ export default function HomeScreen() {
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No more pets to show.</Text>
-          <TouchableOpacity
-            style={styles.refreshButton}
-            onPress={handleRefresh}
-          >
+          <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
             <Text style={styles.refreshButtonText}>Start Over</Text>
           </TouchableOpacity>
         </View>
       );
     }
-
     return (
       <Swiper
         cards={pets}
@@ -427,6 +459,9 @@ export default function HomeScreen() {
         stackSeparation={15}
         containerStyle={styles.swiperContainer}
         cardStyle={styles.swiperCard}
+        animateOverlayLabelsOpacity
+        animateCardOpacity
+        swipeBackCard
         overlayLabels={{
           left: {
             title: "NOPE",
@@ -494,9 +529,13 @@ export default function HomeScreen() {
     );
   };
 
+  // Main return
   return (
     <View style={styles.container}>
-      <View style={styles.cardContainer}>{renderPets()}</View>
+      <View style={styles.cardContainer}>
+        {renderContent()}
+      </View>
+
       {!loading && pets.length > 0 && currentIndex < pets.length && (
         <View style={styles.bottomContainer}>
           <IconButton
@@ -532,21 +571,30 @@ export default function HomeScreen() {
             size={30}
             iconColor="#915DD1"
             style={[styles.button, styles.smallButton]}
-            onPress={() => {
-              Vibration.vibrate(30);
-            }}
+            onPress={() => Vibration.vibrate(30)}
           />
         </View>
       )}
+
       {matchAnimation && (
         <BlurView intensity={100} style={styles.matchAnimation}>
-          <Text style={styles.matchText}>It's a Match!</Text>
+          <Text style={styles.matchText}>It's a Match! 🐾</Text>
         </BlurView>
       )}
+
       {lastAction && (
         <Animated.View style={styles.actionFeedback}>
           <BlurView intensity={100} style={styles.blurView}>
-            <Text style={styles.actionText}>
+            <Text style={[
+              styles.actionText,
+              {
+                color: lastAction === "liked" 
+                  ? "#4CCC93" 
+                  : lastAction === "noped" 
+                  ? "#EC5E6F" 
+                  : "#3AB4CC"
+              }
+            ]}>
               {lastAction === "liked"
                 ? "Liked!"
                 : lastAction === "noped"
@@ -559,6 +607,7 @@ export default function HomeScreen() {
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {
