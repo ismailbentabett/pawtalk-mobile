@@ -15,6 +15,7 @@ import {
 import { IconButton } from "react-native-paper";
 import { LinearGradient } from "expo-linear-gradient";
 import { BlurView } from "expo-blur";
+import Swiper from "react-native-deck-swiper";
 import {
   collection,
   getDocs,
@@ -187,25 +188,7 @@ export default function HomeScreen() {
 
     Vibration.vibrate(50);
     await createMatch("liked");
-
-    Animated.parallel([
-      Animated.timing(position, {
-        toValue: { x: SCREEN_WIDTH + 100, y: 0 },
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setCurrentIndex((prevIndex) => prevIndex + 1);
-      setCurrentImageIndex(0);
-      position.setValue({ x: 0, y: 0 });
-      opacity.setValue(1);
-      setLastAction("liked");
-    });
+    setLastAction("liked");
   }, [currentIndex, pets.length]);
 
   const handleNope = useCallback(async () => {
@@ -213,25 +196,7 @@ export default function HomeScreen() {
 
     Vibration.vibrate(50);
     await createMatch("passed");
-
-    Animated.parallel([
-      Animated.timing(position, {
-        toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setCurrentIndex((prevIndex) => prevIndex + 1);
-      setCurrentImageIndex(0);
-      position.setValue({ x: 0, y: 0 });
-      opacity.setValue(1);
-      setLastAction("noped");
-    });
+    setLastAction("noped");
   }, [currentIndex, pets.length]);
 
   const handleSuperLike = useCallback(async () => {
@@ -247,24 +212,7 @@ export default function HomeScreen() {
       });
     }
 
-    Animated.parallel([
-      Animated.timing(position, {
-        toValue: { x: 0, y: -SCREEN_HEIGHT - 100 },
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start(() => {
-      setCurrentIndex((prevIndex) => prevIndex + 1);
-      setCurrentImageIndex(0);
-      position.setValue({ x: 0, y: 0 });
-      opacity.setValue(1);
-      setLastAction("superliked");
-    });
+    setLastAction("superliked");
   }, [currentIndex, pets.length]);
 
   useEffect(() => {
@@ -308,69 +256,6 @@ export default function HomeScreen() {
     await fetchPets();
   }, []);
 
-  const rotate = position.x.interpolate({
-    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-    outputRange: ["-10deg", "0deg", "10deg"],
-    extrapolate: "clamp",
-  });
-
-  const rotateAndTranslate = {
-    transform: [
-      {
-        rotate: rotate,
-      },
-      ...position.getTranslateTransform(),
-    ],
-  };
-
-  const likeOpacity = position.x.interpolate({
-    inputRange: [0, SCREEN_WIDTH / 4],
-    outputRange: [0, 1],
-    extrapolate: "clamp",
-  });
-
-  const nopeOpacity = position.x.interpolate({
-    inputRange: [-SCREEN_WIDTH / 4, 0],
-    outputRange: [1, 0],
-    extrapolate: "clamp",
-  });
-
-  const nextCardOpacity = position.x.interpolate({
-    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-    outputRange: [1, 0, 1],
-    extrapolate: "clamp",
-  });
-
-  const nextCardScale = position.x.interpolate({
-    inputRange: [-SCREEN_WIDTH / 2, 0, SCREEN_WIDTH / 2],
-    outputRange: [1, 0.8, 1],
-    extrapolate: "clamp",
-  });
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onPanResponderMove: (_, gestureState) => {
-        position.setValue({ x: gestureState.dx, y: gestureState.dy });
-      },
-      onPanResponderRelease: (_, gestureState) => {
-        if (gestureState.dx > SWIPE_THRESHOLD) {
-          handleLike();
-        } else if (gestureState.dx < -SWIPE_THRESHOLD) {
-          handleNope();
-        } else if (gestureState.dy < -SWIPE_THRESHOLD) {
-          handleSuperLike();
-        } else {
-          Animated.spring(position, {
-            toValue: { x: 0, y: 0 },
-            friction: 4,
-            useNativeDriver: true,
-          }).start();
-        }
-      },
-    })
-  ).current;
-
   const renderCarouselIndicators = useCallback(() => {
     if (!pets[currentIndex]) return null;
     const images = getImageArray(pets[currentIndex]);
@@ -389,6 +274,92 @@ export default function HomeScreen() {
       </View>
     );
   }, [currentIndex, currentImageIndex, pets]);
+
+  const renderCard = (pet: Pet) => {
+    const images = getImageArray(pet);
+
+    return (
+      <Animated.View style={[styles.animatedCard, { opacity }]}>
+        <TouchableOpacity activeOpacity={0.9} onPress={handleImagePress}>
+          <Image
+            style={styles.cardImage}
+            source={{ uri: images[currentImageIndex] }}
+            resizeMode="cover"
+          />
+          {renderCarouselIndicators()}
+        </TouchableOpacity>
+        <LinearGradient
+          colors={["transparent", "rgba(0,0,0,0.9)"]}
+          style={styles.cardGradient}
+        >
+          <Text style={styles.cardName}>
+            {pet.name}, {pet.age}
+          </Text>
+          <Text style={styles.cardSpecies}>
+            {pet.breed} · {pet.type}
+          </Text>
+          <Text style={styles.cardLocation}>
+            {pet.location.city}, {pet.location.country}
+          </Text>
+          <View style={styles.cardDetails}>
+            <Text style={styles.cardDetailText}>
+              {pet.gender} · {pet.vaccinated ? "Vaccinated" : "Not Vaccinated"}
+            </Text>
+          </View>
+        </LinearGradient>
+        <TouchableOpacity style={styles.bioButton} onPress={toggleBio}>
+          <IconButton icon="information" size={24} iconColor="white" />
+        </TouchableOpacity>
+        <Animated.View
+          style={[
+            styles.bioContainer,
+            {
+              transform: [
+                {
+                  translateY: bioAnimation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [300, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <BlurView intensity={100} style={styles.bioBlurView}>
+            <ScrollView>
+              <Text style={styles.bioText}>{pet.description}</Text>
+              <View style={styles.bioInfoSection}>
+                <Text style={styles.bioInfoTitle}>Health Information</Text>
+                <Text style={styles.bioInfoText}>
+                  Microchipped: {pet.microchipped ? "Yes" : "No"}
+                </Text>
+                <Text style={styles.bioInfoText}>
+                  Neutered: {pet.neutered ? "Yes" : "No"}
+                </Text>
+                <Text style={styles.bioInfoText}>
+                  Vaccinated: {pet.vaccinated ? "Yes" : "No"}
+                </Text>
+              </View>
+              <View style={styles.bioInfoSection}>
+                <Text style={styles.bioInfoTitle}>Additional Details</Text>
+                <Text style={styles.bioInfoText}>
+                  Adoption Fee: ${pet.adoptionFee}
+                </Text>
+                <Text style={styles.bioInfoText}>
+                  Location: {pet.location.city}, {pet.location.state},{" "}
+                  {pet.location.country}
+                </Text>
+                <Text style={styles.bioInfoText}>Status: {pet.status}</Text>
+                <Text style={styles.bioInfoText}>
+                  Added: {pet.createdAt.toLocaleDateString()}
+                </Text>
+              </View>
+            </ScrollView>
+          </BlurView>
+        </Animated.View>
+      </Animated.View>
+    );
+  };
 
   const renderPets = () => {
     if (loading) {
@@ -442,152 +413,85 @@ export default function HomeScreen() {
       );
     }
 
-    return pets
-      .map((pet, i) => {
-        if (i < currentIndex) {
-          return null;
-        } else if (i == currentIndex) {
-          const images = getImageArray(pet);
-
-          return (
-            <Animated.View
-              {...panResponder.panHandlers}
-              key={pet.id}
-              style={[rotateAndTranslate, styles.animatedCard, { opacity }]}
-            >
-              <TouchableOpacity activeOpacity={0.9} onPress={handleImagePress}>
-                <Image
-                  style={styles.cardImage}
-                  source={{ uri: images[currentImageIndex] }}
-                  resizeMode="cover"
-                />
-                {renderCarouselIndicators()}
-              </TouchableOpacity>
-              <LinearGradient
-                colors={["transparent", "rgba(0,0,0,0.9)"]}
-                style={styles.cardGradient}
-              >
-                <Text style={styles.cardName}>
-                  {pet.name}, {pet.age}
-                </Text>
-                <Text style={styles.cardSpecies}>
-                  {pet.breed} · {pet.type}
-                </Text>
-                <Text style={styles.cardLocation}>
-                  {pet.location.city}, {pet.location.country}
-                </Text>
-                <View style={styles.cardDetails}>
-                  <Text style={styles.cardDetailText}>
-                    {pet.gender} ·{" "}
-                    {pet.vaccinated ? "Vaccinated" : "Not Vaccinated"}
-                  </Text>
-                </View>
-              </LinearGradient>
-              <Animated.View
-                style={[styles.likeTextContainer, { opacity: likeOpacity }]}
-              >
-                <BlurView intensity={100} style={styles.blurView}>
-                  <Text style={styles.likeText}>LIKE</Text>
-                </BlurView>
-              </Animated.View>
-              <Animated.View
-                style={[styles.nopeTextContainer, { opacity: nopeOpacity }]}
-              >
-                <BlurView intensity={100} style={styles.blurView}>
-                  <Text style={styles.nopeText}>NOPE</Text>
-                </BlurView>
-              </Animated.View>
-              <TouchableOpacity style={styles.bioButton} onPress={toggleBio}>
-                <IconButton icon="information" size={24} iconColor="white" />
-              </TouchableOpacity>
-              <Animated.View
-                style={[
-                  styles.bioContainer,
-                  {
-                    transform: [
-                      {
-                        translateY: bioAnimation.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [300, 0],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              >
-                <BlurView intensity={100} style={styles.bioBlurView}>
-                  <ScrollView>
-                    <Text style={styles.bioText}>{pet.description}</Text>
-                    <View style={styles.bioInfoSection}>
-                      <Text style={styles.bioInfoTitle}>
-                        Health Information
-                      </Text>
-                      <Text style={styles.bioInfoText}>
-                        Microchipped: {pet.microchipped ? "Yes" : "No"}
-                      </Text>
-                      <Text style={styles.bioInfoText}>
-                        Neutered: {pet.neutered ? "Yes" : "No"}
-                      </Text>
-                      <Text style={styles.bioInfoText}>
-                        Vaccinated: {pet.vaccinated ? "Yes" : "No"}
-                      </Text>
-                    </View>
-                    <View style={styles.bioInfoSection}>
-                      <Text style={styles.bioInfoTitle}>
-                        Additional Details
-                      </Text>
-                      <Text style={styles.bioInfoText}>
-                        Adoption Fee: ${pet.adoptionFee}
-                      </Text>
-                      <Text style={styles.bioInfoText}>
-                        Location: {pet.location.city}, {pet.location.state},{" "}
-                        {pet.location.country}
-                      </Text>
-                      <Text style={styles.bioInfoText}>
-                        Status: {pet.status}
-                      </Text>
-                      <Text style={styles.bioInfoText}>
-                        Added: {pet.createdAt.toLocaleDateString()}
-                      </Text>
-                    </View>
-                  </ScrollView>
-                </BlurView>
-              </Animated.View>
-            </Animated.View>
-          );
-        } else {
-          return (
-            <Animated.View
-              key={pet.id}
-              style={[
-                {
-                  opacity: nextCardOpacity,
-                  transform: [{ scale: nextCardScale }],
-                },
-                styles.animatedCard,
-              ]}
-            >
-              <Image
-                style={styles.cardImage}
-                source={{ uri: pet.images.main }}
-                resizeMode="cover"
-              />
-              <LinearGradient
-                colors={["transparent", "rgba(0,0,0,0.9)"]}
-                style={styles.cardGradient}
-              >
-                <Text style={styles.cardName}>
-                  {pet.name}, {pet.age}
-                </Text>
-                <Text style={styles.cardSpecies}>
-                  {pet.breed} · {pet.type}
-                </Text>
-              </LinearGradient>
-            </Animated.View>
-          );
-        }
-      })
-      .reverse();
+    return (
+      <Swiper
+        cards={pets}
+        renderCard={renderCard}
+        onSwipedLeft={handleNope}
+        onSwipedRight={handleLike}
+        onSwipedTop={handleSuperLike}
+        onSwipedAll={() => setCurrentIndex(pets.length)}
+        cardIndex={currentIndex}
+        backgroundColor={"#f5f5f5"}
+        stackSize={3}
+        stackSeparation={15}
+        containerStyle={styles.swiperContainer}
+        cardStyle={styles.swiperCard}
+        overlayLabels={{
+          left: {
+            title: "NOPE",
+            style: {
+              label: {
+                backgroundColor: "transparent",
+                borderColor: "#EC5E6F",
+                color: "#EC5E6F",
+                borderWidth: 4,
+                fontSize: 36,
+                fontWeight: "800",
+                padding: 12,
+              },
+              wrapper: {
+                flexDirection: "column",
+                alignItems: "flex-end",
+                justifyContent: "flex-start",
+                marginTop: 60,
+                marginLeft: -30,
+              },
+            },
+          },
+          right: {
+            title: "LIKE",
+            style: {
+              label: {
+                backgroundColor: "transparent",
+                borderColor: "#4CCC93",
+                color: "#4CCC93",
+                borderWidth: 4,
+                fontSize: 36,
+                fontWeight: "800",
+                padding: 12,
+              },
+              wrapper: {
+                flexDirection: "column",
+                alignItems: "flex-start",
+                justifyContent: "flex-start",
+                marginTop: 60,
+                marginLeft: 30,
+              },
+            },
+          },
+          top: {
+            title: "SUPER LIKE",
+            style: {
+              label: {
+                backgroundColor: "transparent",
+                borderColor: "#3AB4CC",
+                color: "#3AB4CC",
+                borderWidth: 4,
+                fontSize: 24,
+                fontWeight: "800",
+                padding: 12,
+              },
+              wrapper: {
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+              },
+            },
+          },
+        }}
+      />
+    );
   };
 
   return (
@@ -669,7 +573,6 @@ const styles = StyleSheet.create({
   animatedCard: {
     height: SCREEN_HEIGHT - 180,
     width: SCREEN_WIDTH - 40,
-    position: "absolute",
     borderRadius: 24,
     overflow: "hidden",
     backgroundColor: "#fff",
@@ -687,7 +590,6 @@ const styles = StyleSheet.create({
     height: SCREEN_HEIGHT - 180,
     borderRadius: 24,
     overflow: "hidden",
-    //cover : "cover"
     resizeMode: "cover",
   },
   cardGradient: {
@@ -759,38 +661,6 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-  },
-  likeTextContainer: {
-    position: "absolute",
-    top: 60,
-    left: 40,
-    zIndex: 1000,
-    transform: [{ rotate: "-30deg" }],
-  },
-  nopeTextContainer: {
-    position: "absolute",
-    top: 60,
-    right: 40,
-    zIndex: 1000,
-    transform: [{ rotate: "30deg" }],
-  },
-  likeText: {
-    borderWidth: 4,
-    borderColor: "#4CCC93",
-    color: "#4CCC93",
-    fontSize: 36,
-    fontWeight: "800",
-    padding: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-  },
-  nopeText: {
-    borderWidth: 4,
-    borderColor: "#EC5E6F",
-    color: "#EC5E6F",
-    fontSize: 36,
-    fontWeight: "800",
-    padding: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
   },
   matchAnimation: {
     position: "absolute",
@@ -930,5 +800,14 @@ const styles = StyleSheet.create({
     color: "#EC5E6F",
     marginBottom: 20,
     textAlign: "center",
+  },
+  swiperContainer: {
+    flex: 1,
+  },
+  swiperCard: {
+    flex: 1,
+    borderRadius: 24,
+    justifyContent: "center",
+    backgroundColor: "white",
   },
 });
