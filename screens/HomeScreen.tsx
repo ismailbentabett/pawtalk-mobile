@@ -28,6 +28,7 @@ import {
   increment,
   serverTimestamp,
   Timestamp,
+  getDoc,
 } from "firebase/firestore";
 import { db, auth } from "../config/firebase";
 import { Pet } from "../types/Pet";
@@ -40,7 +41,7 @@ const SWIPE_THRESHOLD = 120;
 
 interface MatchOperation {
   match: Match;
-  conversationId?: string;
+  conversationId: string;
 }
 
 export default function HomeScreen() {
@@ -85,24 +86,25 @@ export default function HomeScreen() {
         where("userId", "==", userId)
       );
       const matchesSnapshot = await getDocs(matchesQuery);
-      const matchedPetIds = matchesSnapshot.docs.map(doc => doc.data().petId);
+      const matchedPetIds = matchesSnapshot.docs.map((doc) => doc.data().petId);
 
       // Query for available pets
-      const petsQuery = matchedPetIds.length > 0
-        ? query(
-            collection(db, "pets"),
-            where("status", "==", "available"),
-            where("id", "not-in", matchedPetIds),
-            limit(10)
-          )
-        : query(
-            collection(db, "pets"),
-            where("status", "==", "available"),
-            limit(10)
-          );
+      const petsQuery =
+        matchedPetIds.length > 0
+          ? query(
+              collection(db, "pets"),
+              where("status", "==", "available"),
+              where("id", "not-in", matchedPetIds),
+              limit(10)
+            )
+          : query(
+              collection(db, "pets"),
+              where("status", "==", "available"),
+              limit(10)
+            );
 
       const querySnapshot = await getDocs(petsQuery);
-      const fetchedPets = querySnapshot.docs.map(doc => ({
+      const fetchedPets = querySnapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
         createdAt: doc.data().createdAt?.toDate(),
@@ -137,7 +139,7 @@ export default function HomeScreen() {
       createdAt: serverTimestamp() as Timestamp,
       read: false,
       type: "text",
-      conversationId
+      conversationId,
     };
 
     await setDoc(messageRef, message);
@@ -155,7 +157,8 @@ export default function HomeScreen() {
       petId: pet.id,
       createdAt: serverTimestamp() as Timestamp,
       lastMessageAt: serverTimestamp() as Timestamp,
-      status: "active" as ConversationStatus
+      status: "active" as ConversationStatus,
+      userId: userId,
     };
 
     await setDoc(conversationRef, conversation);
@@ -164,62 +167,75 @@ export default function HomeScreen() {
   };
 
   // Handle match creation
-  const createMatch = async (status: MatchStatus): Promise<MatchOperation | null> => {
+  const createMatch = async (): Promise<MatchOperation> => {
     const currentUser = auth.currentUser;
-    if (!currentUser?.uid || currentIndex >= pets.length) return null;
+    if (!currentUser?.uid || currentIndex >= pets.length) {
+      throw new Error("User not authenticated or no pets available");
+    }
 
     try {
       const currentPet = pets[currentIndex];
+
+      // Check for existing match
+      const existingMatchQuery = query(
+        collection(db, "matches"),
+        where("userId", "==", currentUser.uid),
+        where("petId", "==", currentPet.id)
+      );
+      const existingMatchSnapshot = await getDocs(existingMatchQuery);
+
+      if (!existingMatchSnapshot.empty) {
+        // Match already exists, return existing match data
+        const existingMatch = existingMatchSnapshot.docs[0].data() as Match;
+        const existingConversationQuery = query(
+          collection(db, "conversations"),
+          where("participants", "array-contains", currentUser.uid),
+          where("petId", "==", currentPet.id)
+        );
+        const existingConversationSnapshot = await getDocs(
+          existingConversationQuery
+        );
+
+        if (existingConversationSnapshot.empty) {
+          throw new Error("Existing match found but no conversation exists");
+        }
+
+        return {
+          match: existingMatch,
+          conversationId: existingConversationSnapshot.docs[0].id,
+        };
+      }
+
+      // Create new match
       const matchRef = doc(collection(db, "matches"));
-      
       const match: Match = {
         id: matchRef.id,
         userId: currentUser.uid,
         petId: currentPet.id,
-        status,
+        status: "matched",
         createdAt: serverTimestamp() as Timestamp,
+        matchedAt: serverTimestamp() as Timestamp,
       };
 
-      // Check for match if liked
-      if (status === "liked") {
-        const existingMatchQuery = query(
-          collection(db, "matches"),
-          where("petId", "==", currentPet.id),
-          where("userId", "==", currentUser.uid),
-          where("status", "==", "liked")
-        );
+      // Create conversation
+      const conversationId = await createConversation(
+        currentUser.uid,
+        currentPet
+      );
 
-        const querySnapshot = await getDocs(existingMatchQuery);
-        if (!querySnapshot.empty) {
-          // It's a match!
-          match.status = "matched";
-          match.matchedAt = serverTimestamp() as Timestamp;
+      await Promise.all([
+        setDoc(matchRef, match),
+        updateDoc(doc(db, "pets", currentPet.id), {
+          matches: arrayUnion(currentUser.uid),
+          matchRate: increment(0.1),
+          lastActivity: serverTimestamp(),
+        }),
+        updateDoc(doc(db, "users", currentUser.uid), {
+          "settings.lastMatch": serverTimestamp(),
+        }),
+      ]);
 
-          // Create conversation and update stats
-          const conversationId = await createConversation(currentUser.uid, currentPet);
-          
-          await Promise.all([
-            updateDoc(doc(db, "pets", currentPet.id), {
-              matches: arrayUnion(currentUser.uid),
-              matchRate: increment(0.1),
-              lastActivity: serverTimestamp(),
-            }),
-            updateDoc(doc(db, "users", currentUser.uid), {
-              "settings.lastMatch": serverTimestamp(),
-            }),
-          ]);
-
-          setMatchAnimation(true);
-          setTimeout(() => setMatchAnimation(false), 1500);
-          
-          await setDoc(matchRef, match);
-          return { match, conversationId };
-        }
-      }
-
-      // Save the match
-      await setDoc(matchRef, match);
-      return { match };
+      return { match, conversationId };
     } catch (error) {
       console.error("Error creating match:", error);
       throw error;
@@ -227,14 +243,18 @@ export default function HomeScreen() {
   };
 
   // Action handlers
-  const handleLike = useCallback(async () => {
+  const handleMatch = useCallback(async () => {
     if (currentIndex >= pets.length) return;
     try {
       Vibration.vibrate(50);
-      await createMatch("liked");
-      setLastAction("liked");
+      const result = await createMatch();
+      console.log("Match created:", result.match.id);
+      console.log("Conversation created:", result.conversationId);
+      setMatchAnimation(true);
+      setTimeout(() => setMatchAnimation(false), 1500);
+      setLastAction("matched");
     } catch (err) {
-      setError("Failed to like pet");
+      setError("Failed to create match");
     }
   }, [currentIndex, pets.length]);
 
@@ -242,29 +262,9 @@ export default function HomeScreen() {
     if (currentIndex >= pets.length) return;
     try {
       Vibration.vibrate(50);
-      await createMatch("passed");
       setLastAction("noped");
     } catch (err) {
       setError("Failed to pass pet");
-    }
-  }, [currentIndex, pets.length]);
-
-  const handleSuperLike = useCallback(async () => {
-    if (currentIndex >= pets.length) return;
-    try {
-      Vibration.vibrate([0, 50, 50, 50]);
-      const result = await createMatch("liked");
-      
-      if (result?.match) {
-        await updateDoc(doc(db, "pets", pets[currentIndex].id), {
-          superLikes: arrayUnion(auth.currentUser?.uid),
-          matchRate: increment(0.2),
-        });
-      }
-      
-      setLastAction("superliked");
-    } catch (err) {
-      setError("Failed to super like pet");
     }
   }, [currentIndex, pets.length]);
 
@@ -305,7 +305,7 @@ export default function HomeScreen() {
             key={index}
             style={[
               styles.carouselIndicator,
-              index === currentImageIndex && styles.carouselIndicatorActive
+              index === currentImageIndex && styles.carouselIndicatorActive,
             ]}
           />
         ))}
@@ -326,7 +326,7 @@ export default function HomeScreen() {
           />
           {renderCarouselIndicators()}
         </TouchableOpacity>
-        
+
         <LinearGradient
           colors={["transparent", "rgba(0,0,0,0.9)"]}
           style={styles.cardGradient}
@@ -417,7 +417,10 @@ export default function HomeScreen() {
       return (
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>{error}</Text>
-          <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={handleRefresh}
+          >
             <Text style={styles.refreshButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
@@ -428,7 +431,10 @@ export default function HomeScreen() {
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No pets available at the moment.</Text>
-          <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={handleRefresh}
+          >
             <Text style={styles.refreshButtonText}>Refresh</Text>
           </TouchableOpacity>
         </View>
@@ -439,7 +445,10 @@ export default function HomeScreen() {
       return (
         <View style={styles.emptyContainer}>
           <Text style={styles.emptyText}>No more pets to show.</Text>
-          <TouchableOpacity style={styles.refreshButton} onPress={handleRefresh}>
+          <TouchableOpacity
+            style={styles.refreshButton}
+            onPress={handleRefresh}
+          >
             <Text style={styles.refreshButtonText}>Start Over</Text>
           </TouchableOpacity>
         </View>
@@ -450,8 +459,8 @@ export default function HomeScreen() {
         cards={pets}
         renderCard={renderCard}
         onSwipedLeft={handleNope}
-        onSwipedRight={handleLike}
-        onSwipedTop={handleSuperLike}
+        onSwipedRight={handleMatch}
+        onSwipedTop={handleMatch}
         onSwipedAll={() => setCurrentIndex(pets.length)}
         cardIndex={currentIndex}
         backgroundColor={"#f5f5f5"}
@@ -485,7 +494,7 @@ export default function HomeScreen() {
             },
           },
           right: {
-            title: "LIKE",
+            title: "MATCH",
             style: {
               label: {
                 backgroundColor: "transparent",
@@ -506,7 +515,7 @@ export default function HomeScreen() {
             },
           },
           top: {
-            title: "SUPER LIKE",
+            title: "SUPER MATCH",
             style: {
               label: {
                 backgroundColor: "transparent",
@@ -532,9 +541,7 @@ export default function HomeScreen() {
   // Main return
   return (
     <View style={styles.container}>
-      <View style={styles.cardContainer}>
-        {renderContent()}
-      </View>
+      <View style={styles.cardContainer}>{renderContent()}</View>
 
       {!loading && pets.length > 0 && currentIndex < pets.length && (
         <View style={styles.bottomContainer}>
@@ -557,14 +564,14 @@ export default function HomeScreen() {
             size={30}
             iconColor="#3AB4CC"
             style={[styles.button, styles.smallButton]}
-            onPress={handleSuperLike}
+            onPress={handleMatch}
           />
           <IconButton
             icon="heart"
             size={40}
             iconColor="#4CCC93"
             style={[styles.button, styles.largeButton]}
-            onPress={handleLike}
+            onPress={handleMatch}
           />
           <IconButton
             icon="flash"
@@ -585,21 +592,15 @@ export default function HomeScreen() {
       {lastAction && (
         <Animated.View style={styles.actionFeedback}>
           <BlurView intensity={100} style={styles.blurView}>
-            <Text style={[
-              styles.actionText,
-              {
-                color: lastAction === "liked" 
-                  ? "#4CCC93" 
-                  : lastAction === "noped" 
-                  ? "#EC5E6F" 
-                  : "#3AB4CC"
-              }
-            ]}>
-              {lastAction === "liked"
-                ? "Liked!"
-                : lastAction === "noped"
-                ? "Noped!"
-                : "Super Liked!"}
+            <Text
+              style={[
+                styles.actionText,
+                {
+                  color: lastAction === "matched" ? "#4CCC93" : "#EC5E6F",
+                },
+              ]}
+            >
+              {lastAction === "matched" ? "Matched!" : "Noped!"}
             </Text>
           </BlurView>
         </Animated.View>
@@ -607,7 +608,6 @@ export default function HomeScreen() {
     </View>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {
