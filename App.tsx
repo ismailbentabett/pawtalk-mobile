@@ -1,8 +1,8 @@
-// App.tsx
 import React from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { MD3LightTheme, PaperProvider } from 'react-native-paper';
 import { AuthProvider } from './contexts/AuthContext';
+import { PetProvider } from './contexts/PetContext';
 import RootNavigator from './navigation';
 
 const theme = {
@@ -26,9 +26,12 @@ export default function App() {
     <SafeAreaProvider>
       <PaperProvider theme={theme}>
         <AuthProvider>
-          <RootNavigator />
+          <PetProvider>
+            <RootNavigator />
+          </PetProvider>
         </AuthProvider>
       </PaperProvider>
     </SafeAreaProvider>
   );
 }
+
