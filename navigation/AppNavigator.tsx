@@ -1,10 +1,10 @@
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import React from "react";
-import { useAuth } from "../contexts/AuthContext";
 import { ChatRoomScreen } from "../screens/chat/ChatRoomScreen";
 import { AppStackParamList } from "../types/navigation";
 import BottomTabNavigator from "./BottomTabNavigator";
 import SettingsScreen from "../screens/user/SettingsScreen";
+import { useAuth } from "../hooks/useAuth";
 
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
