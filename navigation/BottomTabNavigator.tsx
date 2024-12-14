@@ -2,10 +2,10 @@ import React from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useTheme } from "react-native-paper";
 import { MaterialIcons } from "@expo/vector-icons";
-import HomeScreen from "../screens/HomeScreen";
 import ProfileScreen from "../screens/user/ProfileScreen";
 import { BottomTabParamList } from "../types/navigation";
 import { ChatsScreen } from "../screens/chat/ChatsScreen";
+import { HomeScreen } from "../screens/HomeScreen";
 
 const Tab = createBottomTabNavigator<BottomTabParamList>();
 
