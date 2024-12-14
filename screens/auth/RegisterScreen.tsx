@@ -1,90 +1,50 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, KeyboardAvoidingView, Platform } from 'react-native';
+import React, { useState } from "react";
+import { StyleSheet, View, KeyboardAvoidingView, Platform } from "react-native";
 import {
   TextInput,
   Button,
   Text,
   Surface,
-  HelperText
-} from 'react-native-paper';
-import { NavigationProp } from '@react-navigation/native';
-import { createUserWithEmailAndPassword } from '../../config/firebase';
+  HelperText,
+} from "react-native-paper";
+import { NavigationProp } from "@react-navigation/native";
+import { useAuthContext } from "../../contexts/AuthContext";
 
-export default function RegisterScreen({ navigation }: { navigation: NavigationProp<any> }) {
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: ''
-  });
+export default function RegisterScreen({
+  navigation,
+}: {
+  navigation: NavigationProp<any>;
+}) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [errors, setErrors] = useState({
-    name: '',
-    email: '',
-    password: '',
-    confirmPassword: ''
-  });
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
-  const validateForm = () => {
-    const newErrors = { ...errors };
-    let isValid = true;
-
-    if (!formData.name) {
-      newErrors.name = 'Name is required';
-      isValid = false;
-    }
-
-    if (!formData.email.includes('@')) {
-      newErrors.email = 'Please enter a valid email';
-      isValid = false;
-    }
-
-    if (formData.password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
-      isValid = false;
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      newErrors.confirmPassword = 'Passwords do not match';
-      isValid = false;
-    }
-
-    setErrors(newErrors);
-    return isValid;
-  };
+  const { signUp, loading } = useAuthContext();
 
   const handleRegister = async () => {
-    if (validateForm()) {
-      try {
-        setLoading(true);
-        setError('');
-        const { success, error } = await createUserWithEmailAndPassword(
-          formData.email,
-          formData.password,
-          formData.name
-        );
+    if (password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
 
-        console.log('Registration result:', { success, error });
+    if (name && email && password) {
+      setError("");
+      const { success, error } = await signUp(email, password, name);
 
-        if (success) {
-          // Auth context will handle navigation
-          console.log('Registration successful');
-        } else {
-          setError(error || 'Registration failed');
-        }
-      } catch (err) {
-        setError('An unexpected error occurred');
-      } finally {
-        setLoading(false);
+      if (success) {
+        console.log("Registration successful");
+      } else {
+        setError(error || "Registration failed");
       }
     }
   };
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
       <Surface style={styles.surface} elevation={1}>
@@ -102,47 +62,30 @@ export default function RegisterScreen({ navigation }: { navigation: NavigationP
           <TextInput
             mode="outlined"
             label="Full Name"
-            value={formData.name}
-            onChangeText={(text) => {
-              setFormData(prev => ({...prev, name: text}));
-              if (errors.name) setErrors(prev => ({...prev, name: ''}));
-            }}
+            value={name}
+            onChangeText={setName}
             left={<TextInput.Icon icon="account" />}
-            error={!!errors.name}
             style={styles.input}
             disabled={loading}
           />
-          <HelperText type="error" visible={!!errors.name}>
-            {errors.name}
-          </HelperText>
 
           <TextInput
             mode="outlined"
             label="Email"
-            value={formData.email}
-            onChangeText={(text) => {
-              setFormData(prev => ({...prev, email: text}));
-              if (errors.email) setErrors(prev => ({...prev, email: ''}));
-            }}
+            value={email}
+            onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
             left={<TextInput.Icon icon="email" />}
-            error={!!errors.email}
             style={styles.input}
             disabled={loading}
           />
-          <HelperText type="error" visible={!!errors.email}>
-            {errors.email}
-          </HelperText>
 
           <TextInput
             mode="outlined"
             label="Password"
-            value={formData.password}
-            onChangeText={(text) => {
-              setFormData(prev => ({...prev, password: text}));
-              if (errors.password) setErrors(prev => ({...prev, password: ''}));
-            }}
+            value={password}
+            onChangeText={setPassword}
             secureTextEntry={!showPassword}
             left={<TextInput.Icon icon="lock" />}
             right={
@@ -151,46 +94,36 @@ export default function RegisterScreen({ navigation }: { navigation: NavigationP
                 onPress={() => setShowPassword(!showPassword)}
               />
             }
-            error={!!errors.password}
             style={styles.input}
             disabled={loading}
           />
-          <HelperText type="error" visible={!!errors.password}>
-            {errors.password}
-          </HelperText>
 
           <TextInput
             mode="outlined"
             label="Confirm Password"
-            value={formData.confirmPassword}
-            onChangeText={(text) => {
-              setFormData(prev => ({...prev, confirmPassword: text}));
-              if (errors.confirmPassword) 
-                setErrors(prev => ({...prev, confirmPassword: ''}));
-            }}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
             secureTextEntry={!showPassword}
             left={<TextInput.Icon icon="lock" />}
-            error={!!errors.confirmPassword}
             style={styles.input}
             disabled={loading}
           />
-          <HelperText type="error" visible={!!errors.confirmPassword}>
-            {errors.confirmPassword}
-          </HelperText>
 
           <Button
             mode="contained"
             onPress={handleRegister}
             style={styles.button}
             loading={loading}
-            disabled={loading || !formData.email || !formData.password || !formData.name}
+            disabled={
+              loading || !name || !email || !password || !confirmPassword
+            }
           >
             Create Account
           </Button>
 
           <Button
             mode="text"
-            onPress={() => navigation.navigate('Login')}
+            onPress={() => navigation.navigate("Login")}
             style={styles.textButton}
             disabled={loading}
           >
@@ -205,22 +138,22 @@ export default function RegisterScreen({ navigation }: { navigation: NavigationP
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   surface: {
     flex: 1,
     padding: 20,
-    justifyContent: 'center',
+    justifyContent: "center",
   },
   title: {
-    textAlign: 'center',
+    textAlign: "center",
     marginBottom: 20,
   },
   form: {
     gap: 10,
   },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   button: {
     marginTop: 20,
