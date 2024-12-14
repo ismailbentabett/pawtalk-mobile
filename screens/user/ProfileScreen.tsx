@@ -5,8 +5,8 @@ import { useNavigation } from '@react-navigation/native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { useAuth } from '../../contexts/AuthContext';
 import { Timestamp } from "firebase/firestore";
+import { useAuth } from '../../hooks/useAuth';
 
 export type UserRole = "admin" | "moderator" | "user";
 
