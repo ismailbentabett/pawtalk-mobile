@@ -1,65 +1,44 @@
-import React, { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import React, { useState } from "react";
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from "react-native";
 import {
   Button,
   HelperText,
   Surface,
   Text,
   TextInput,
-} from 'react-native-paper';
-import { signInWithEmailAndPassword } from '../../config/firebase';
-
+} from "react-native-paper";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { AuthStackParamList } from "../../types/navigation";
+import { useAuthContext } from "../../contexts/AuthContext";
 
 type LoginScreenProps = {
-  navigation: NativeStackNavigationProp<AuthStackParamList, 'Login'>;
+  navigation: NativeStackNavigationProp<AuthStackParamList, "Login">;
 };
 
-export default function  LoginScreen({ navigation }: LoginScreenProps) {
-  const [email, setEmail] = useState('xisben2003x@gmail.com');
-  const [password, setPassword] = useState('xisben2003x@gmail.com');
+export default function LoginScreen({ navigation }: LoginScreenProps) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [emailError, setEmailError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
-  const validateEmail = (text: string) => {
-    setEmail(text);
-    if (!text.includes('@')) {
-      setEmailError('Please enter a valid email');
-    } else {
-      setEmailError('');
-    }
-  };
+  const { signIn, loading } = useAuthContext();
 
   const handleLogin = async () => {
-    if (!emailError && email && password) {
-      try {
-        setLoading(true);
-        setError('');
-        const { success, error } = await signInWithEmailAndPassword(email, password);
-        
-        console.log('Registration result:', { success, error });
+    if (email && password) {
+      setError("");
+      const { success, error } = await signIn(email, password);
 
-        if (success) {
-          // Auth context will handle navigation
-          console.log('Registration successful');
-          
-        } else {
-          setError(error || 'Login failed');
-        }
-      } catch (err) {
-        setError('An unexpected error occurred');
-      } finally {
-        setLoading(false);
+      if (success) {
+        console.log("Login successful");
+      } else {
+        setError(error || "Login failed");
       }
     }
   };
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
     >
       <Surface style={styles.surface} elevation={1}>
@@ -78,26 +57,19 @@ export default function  LoginScreen({ navigation }: LoginScreenProps) {
             mode="outlined"
             label="Email"
             value={email}
-            onChangeText={validateEmail}
+            onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
-            error={!!emailError}
             left={<TextInput.Icon icon="email" />}
             style={styles.input}
             disabled={loading}
           />
-          <HelperText type="error" visible={!!emailError}>
-            {emailError}
-          </HelperText>
 
           <TextInput
             mode="outlined"
             label="Password"
             value={password}
-            onChangeText={text => {
-              setPassword(text);
-              setError('');
-            }}
+            onChangeText={setPassword}
             secureTextEntry={!showPassword}
             right={
               <TextInput.Icon
@@ -115,14 +87,14 @@ export default function  LoginScreen({ navigation }: LoginScreenProps) {
             onPress={handleLogin}
             style={styles.button}
             loading={loading}
-            disabled={loading || !email || !password || !!emailError}
+            disabled={loading || !email || !password}
           >
             Sign In
           </Button>
 
           <Button
             mode="text"
-            onPress={() => navigation.navigate('Register')}
+            onPress={() => navigation.navigate("Register")}
             style={styles.textButton}
             disabled={loading}
           >
@@ -135,31 +107,30 @@ export default function  LoginScreen({ navigation }: LoginScreenProps) {
 }
 
 const styles = StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: '#fff',
-    },
-    surface: {
-      flex: 1,
-      padding: 20,
-      justifyContent: 'center',
-    },
-    title: {
-      textAlign: 'center',
-      marginBottom: 20,
-    },
-    form: {
-      gap: 10,
-    },
-    input: {
-      backgroundColor: '#fff',
-    },
-    button: {
-      marginTop: 20,
-      padding: 4,
-    },
-    textButton: {
-      marginTop: 10,
-    },
-  });
-  
+  container: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
+  surface: {
+    flex: 1,
+    padding: 20,
+    justifyContent: "center",
+  },
+  title: {
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  form: {
+    gap: 10,
+  },
+  input: {
+    backgroundColor: "#fff",
+  },
+  button: {
+    marginTop: 20,
+    padding: 4,
+  },
+  textButton: {
+    marginTop: 10,
+  },
+});
