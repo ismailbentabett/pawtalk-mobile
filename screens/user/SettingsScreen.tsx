@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { useAuth } from '../../contexts/AuthContext';
 import { Text, TextInput, Button, Switch, Divider, useTheme, HelperText } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
