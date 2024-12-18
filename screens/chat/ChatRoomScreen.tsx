@@ -189,7 +189,7 @@ export function ChatRoomScreen({ navigation, route }: Props) {
         {!isUserMessage && petDetails && (
           <Avatar.Image
             size={24}
-            source={{ uri: petDetails.avatar }}
+            source={{ uri: petDetails.images.main }}
             style={styles.messageAvatar}
           />
         )}
@@ -259,6 +259,7 @@ export function ChatRoomScreen({ navigation, route }: Props) {
     );
   }
 
+
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <Appbar.Header style={styles.header}>
@@ -272,7 +273,7 @@ export function ChatRoomScreen({ navigation, route }: Props) {
           <View style={styles.headerContent}>
             <Avatar.Image
               size={40}
-              source={{ uri: petDetails.avatar }}
+              source={{ uri: petDetails.images.main }}
               style={styles.headerAvatar}
             />
             <View>
