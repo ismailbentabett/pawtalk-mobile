@@ -60,7 +60,7 @@ class ChatService {
                   id: doc.id,
                   petId: data.petId,
                   petName: petDetails?.name || 'Unknown',
-                  petAvatar: petDetails?.avatar || '/placeholder.png',
+                  petAvatar: petDetails?.images.main || '/placeholder.png',
                   lastMessage: {
                     content: data.lastMessage?.content || '',
                     timestamp: data.lastMessage?.timestamp.toDate() || new Date(),
