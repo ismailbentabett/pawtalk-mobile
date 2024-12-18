@@ -1,60 +1,102 @@
-import React from 'react';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
-import { Avatar, Text } from 'react-native-paper';
-import type { Match } from '../types/chat';
+import React, { useEffect, useRef } from "react";
+import {
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Animated,
+  View,
+} from "react-native";
+import { Avatar, Text, useTheme } from "react-native-paper";
+import { LinearGradient } from "expo-linear-gradient";
+import { PetMatch } from "../types/chat";
 
 interface MatchesCarouselProps {
-  matches: Match[];
-  onMatchPress: (match: Match) => void;
+  matches: PetMatch[];
+  onMatchPress: (match: PetMatch) => void;
 }
 
-export function MatchesCarousel({ matches, onMatchPress }: MatchesCarouselProps) {
+export const MatchesCarousel: React.FC<MatchesCarouselProps> = ({
+  matches,
+  onMatchPress,
+}) => {
+  const theme = useTheme();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
   return (
-    <View style={styles.container}>
-      <Text variant="titleMedium" style={styles.title}>New Matches</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.scrollView}>
-        {matches.map((match) => (
-          <TouchableOpacity
+    <Animated.View style={[styles.matchesContainer, { opacity: fadeAnim }]}>
+      <Text style={[styles.matchesTitle, { color: theme.colors.primary }]}>
+        New Matches
+      </Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        {matches.map((match, index) => (
+          <Animated.View
             key={match.id}
-            style={styles.matchItem}
-            onPress={() => onMatchPress(match)}
+            style={{
+              opacity: fadeAnim,
+              transform: [
+                {
+                  translateX: fadeAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [50 * (index + 1), 0],
+                  }),
+                },
+              ],
+            }}
           >
-            <Avatar.Image
-              size={80}
-              source={{ uri: match.avatar }}
-              style={styles.avatar}
-            />
-            <Text variant="labelMedium" style={styles.name}>{match.name}</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.matchItem}
+              onPress={() => onMatchPress(match)}
+            >
+              <LinearGradient
+                colors={[theme.colors.primary, theme.colors.accent]}
+                style={styles.avatarGradient}
+              >
+                <Avatar.Image size={70} source={{ uri: match.avatar }} />
+              </LinearGradient>
+              <Text style={styles.matchName} numberOfLines={1}>
+                {match.name}
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
         ))}
       </ScrollView>
-    </View>
+    </Animated.View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  container: {
-    marginVertical: 16,
+  matchesContainer: {
+    padding: 16,
+    marginBottom: 8,
   },
-  title: {
-    marginLeft: 16,
+  matchesTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
     marginBottom: 12,
-    fontWeight: '600',
-  },
-  scrollView: {
-    paddingHorizontal: 12,
   },
   matchItem: {
-    alignItems: 'center',
-    marginHorizontal: 4,
-    width: 84,
+    alignItems: "center",
+    marginRight: 16,
   },
-  avatar: {
-    borderRadius: 40,
-    marginBottom: 4,
+  avatarGradient: {
+    width: 74,
+    height: 74,
+    borderRadius: 37,
+    justifyContent: "center",
+    alignItems: "center",
   },
-  name: {
-    textAlign: 'center',
+  matchName: {
+    marginTop: 8,
+    fontSize: 14,
+    textAlign: "center",
+    maxWidth: 80,
   },
 });
-
