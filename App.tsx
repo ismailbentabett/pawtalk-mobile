@@ -3,21 +3,22 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { MD3LightTheme, PaperProvider } from 'react-native-paper';
 import { AuthProvider } from './contexts/AuthContext';
 import { PetProvider } from './contexts/PetContext';
+import { ChatProvider } from './contexts/ChatContext';
 import RootNavigator from './navigation';
 
 const theme = {
   ...MD3LightTheme,
   colors: {
     ...MD3LightTheme.colors,
-    primary: '#000000', // Neutral Black
-    secondary: '#FFFFFF', // Neutral White
-    background: '#F5F5F5', // Soft White/Light Gray for backgrounds
-    surface: '#FFFFFF', // White for surfaces like cards
-    text: '#000000', // Black for text
-    onPrimary: '#FFFFFF', // White text on black primary backgrounds
-    onSecondary: '#000000', // Black text on white secondary backgrounds
-    onSurface: '#000000', // Black text on surfaces
-    outline: '#E0E0E0', // Light Gray for outlines or borders
+    primary: '#000000',
+    secondary: '#FFFFFF',
+    background: '#F5F5F5',
+    surface: '#FFFFFF',
+    text: '#000000',
+    onPrimary: '#FFFFFF',
+    onSecondary: '#000000',
+    onSurface: '#000000',
+    outline: '#E0E0E0',
   },
 };
 
@@ -27,7 +28,9 @@ export default function App() {
       <PaperProvider theme={theme}>
         <AuthProvider>
           <PetProvider>
-            <RootNavigator />
+            <ChatProvider>
+              <RootNavigator />
+            </ChatProvider>
           </PetProvider>
         </AuthProvider>
       </PaperProvider>
