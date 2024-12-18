@@ -1,14 +1,17 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   TouchableOpacity,
   StyleSheet,
   Platform,
   Alert,
+  Linking,
+  ActivityIndicator,
 } from "react-native";
 import { Text, useTheme } from "react-native-paper";
 import { Camera, Image as ImageIcon, X } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as ImageManipulator from 'expo-image-manipulator';
 import { GifPicker } from "./GifPicker";
 
 interface MediaPickerProps {
@@ -17,79 +20,170 @@ interface MediaPickerProps {
   onGifSelect: (gif: { url: string; preview: string }) => void;
 }
 
+interface ImageDimensions {
+  width: number;
+  height: number;
+}
+
 export const MediaPicker: React.FC<MediaPickerProps> = ({
   onClose,
   onImageSelect,
   onGifSelect,
 }) => {
   const [showGifPicker, setShowGifPicker] = useState(false);
+  const [processing, setProcessing] = useState(false);
   const theme = useTheme();
+
+  const getImageDimensions = async (uri: string): Promise<ImageDimensions> => {
+    return new Promise((resolve, reject) => {
+      Image.getSize(
+        uri,
+        (width, height) => resolve({ width, height }),
+        (error) => reject(error)
+      );
+    });
+  };
+
+  const processImage = async (uri: string): Promise<string> => {
+    try {
+      setProcessing(true);
+      
+      // Get original image dimensions
+      const dimensions = await getImageDimensions(uri);
+      
+      // Calculate target dimensions (maintaining aspect ratio)
+      const MAX_DIMENSION = 1080;
+      let targetWidth = dimensions.width;
+      let targetHeight = dimensions.height;
+      
+      if (dimensions.width > MAX_DIMENSION || dimensions.height > MAX_DIMENSION) {
+        if (dimensions.width > dimensions.height) {
+          targetWidth = MAX_DIMENSION;
+          targetHeight = (dimensions.height / dimensions.width) * MAX_DIMENSION;
+        } else {
+          targetHeight = MAX_DIMENSION;
+          targetWidth = (dimensions.width / dimensions.height) * MAX_DIMENSION;
+        }
+      }
+
+      // Process image
+      const processed = await ImageManipulator.manipulateAsync(
+        uri,
+        [{ resize: { width: targetWidth, height: targetHeight } }],
+        {
+          compress: 0.8,
+          format: ImageManipulator.SaveFormat.JPEG,
+          base64: false,
+        }
+      );
+
+      return processed.uri;
+    } catch (error) {
+      console.error('Image processing error:', error);
+      throw new Error('Failed to process image');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const checkAndRequestPermissions = async (permissionType: 'camera' | 'mediaLibrary'): Promise<boolean> => {
+    try {
+      const permissionRequest = permissionType === 'camera' 
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permissionRequest.granted) {
+        Alert.alert(
+          "Permission needed",
+          `Please allow access to your ${permissionType === 'camera' ? 'camera' : 'photos'} to ${permissionType === 'camera' ? 'take photos' : 'select images'}.`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { 
+              text: "Settings", 
+              onPress: () => Platform.OS === 'ios' 
+                ? Linking.openURL('app-settings:') 
+                : Linking.openSettings() 
+            }
+          ]
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error(`Error requesting ${permissionType} permission:`, error);
+      return false;
+    }
+  };
 
   const handleImagePick = async () => {
     try {
-      const permissionResult =
-        await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-      if (!permissionResult.granted) {
-        Alert.alert(
-          "Permission needed",
-          "Please allow access to your photos to select images."
-        );
-        return;
-      }
+      const hasPermission = await checkAndRequestPermissions('mediaLibrary');
+      if (!hasPermission) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.8,
+        quality: 1,
       });
 
       if (!result.canceled && result.assets[0]) {
-        onImageSelect(result.assets[0].uri);
+        const processedUri = await processImage(result.assets[0].uri);
+        onImageSelect(processedUri);
         onClose();
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to pick image");
       console.error("Image picker error:", error);
+      Alert.alert(
+        "Error",
+        "Failed to pick image. Please try again or choose a different image."
+      );
     }
   };
 
   const handleCameraCapture = async () => {
     try {
-      const permissionResult =
-        await ImagePicker.requestCameraPermissionsAsync();
-
-      if (!permissionResult.granted) {
-        Alert.alert(
-          "Permission needed",
-          "Please allow access to your camera to take photos."
-        );
-        return;
-      }
+      const hasPermission = await checkAndRequestPermissions('camera');
+      if (!hasPermission) return;
 
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 0.8,
+        quality: 1,
       });
 
       if (!result.canceled && result.assets[0]) {
-        onImageSelect(result.assets[0].uri);
+        const processedUri = await processImage(result.assets[0].uri);
+        onImageSelect(processedUri);
         onClose();
       }
     } catch (error) {
-      Alert.alert("Error", "Failed to capture image");
       console.error("Camera error:", error);
+      Alert.alert(
+        "Error",
+        "Failed to capture image. Please try again."
+      );
     }
   };
 
   if (showGifPicker) {
     return (
       <GifPicker
-        onGifSelect={onGifSelect}
+        onGifSelect={(gif) => {
+          onGifSelect(gif);
+          onClose();
+        }}
         onClose={() => setShowGifPicker(false)}
       />
+    );
+  }
+
+  if (processing) {
+    return (
+      <View style={styles.processingContainer}>
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <Text style={styles.processingText}>Processing image...</Text>
+      </View>
     );
   }
 
@@ -97,7 +191,7 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({
     <View style={styles.mediaPickerContainer}>
       <View style={styles.mediaPickerHeader}>
         <Text style={styles.mediaPickerTitle}>Share Media</Text>
-        <TouchableOpacity onPress={onClose}>
+        <TouchableOpacity onPress={onClose} style={styles.closeButton}>
           <X size={24} color={theme.colors.onSurface} />
         </TouchableOpacity>
       </View>
@@ -107,18 +201,24 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({
           <TouchableOpacity
             style={styles.mediaOption}
             onPress={handleCameraCapture}
+            activeOpacity={0.7}
           >
             <Camera size={32} color={theme.colors.onSurface} />
             <Text style={styles.mediaOptionText}>Camera</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity style={styles.mediaOption} onPress={handleImagePick}>
+        <TouchableOpacity 
+          style={styles.mediaOption} 
+          onPress={handleImagePick}
+          activeOpacity={0.7}
+        >
           <ImageIcon size={32} color={theme.colors.onSurface} />
           <Text style={styles.mediaOptionText}>Gallery</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.mediaOption}
           onPress={() => setShowGifPicker(true)}
+          activeOpacity={0.7}
         >
           <Text style={styles.gifIcon}>GIF</Text>
           <Text style={styles.mediaOptionText}>GIF</Text>
@@ -148,6 +248,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "bold",
   },
+  closeButton: {
+    padding: 8,
+  },
   mediaOptions: {
     flexDirection: "row",
     justifyContent: Platform.OS === "web" ? "center" : "space-around",
@@ -156,13 +259,32 @@ const styles = StyleSheet.create({
   },
   mediaOption: {
     alignItems: "center",
+    padding: 12,
+    borderRadius: 8,
   },
   mediaOptionText: {
     marginTop: 8,
     fontSize: 14,
+    color: "#000000",
   },
   gifIcon: {
     fontSize: 32,
     fontWeight: "bold",
+    color: "#000000",
+  },
+  processingContainer: {
+    height: 400,
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  processingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#666666",
   },
 });
+
+export default MediaPicker;
