@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Image, ScrollView, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions, Image, ScrollView, SafeAreaView } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { IconButton } from 'react-native-paper';
@@ -85,7 +85,7 @@ export const HomeScreen: React.FC = () => {
 
         {showBio && (
           <BlurView intensity={100} style={styles.bioBlurView}>
-            <ScrollView>
+            <ScrollView contentContainerStyle={styles.bioScrollView}>
               <Text style={styles.bioText}>{pet.description}</Text>
               <View style={styles.bioInfoSection}>
                 <Text style={styles.bioInfoTitle}>Health Information</Text>
@@ -150,62 +150,64 @@ export const HomeScreen: React.FC = () => {
   }
 
   return (
-    <View style={styles.container}>
-      <Swiper
-        cards={pets}
-        renderCard={renderCard}
-        onSwipedLeft={handleSwipedLeft}
-        onSwipedRight={handleSwipedRight}
-        onSwipedAll={handleRefresh}
-        cardIndex={currentIndex}
-        backgroundColor={'#f5f5f5'}
-        stackSize={3}
-        stackSeparation={15}
-        overlayLabels={{
-          left: {
-            title: 'NOPE',
-            style: {
-              label: {
-                backgroundColor: 'transparent',
-                borderColor: '#EC5E6F',
-                color: '#EC5E6F',
-                borderWidth: 4,
-                fontSize: 36,
-                fontWeight: '800',
-                padding: 12,
-              },
-              wrapper: {
-                flexDirection: 'column',
-                alignItems: 'flex-end',
-                justifyContent: 'flex-start',
-                marginTop: 60,
-                marginLeft: -30,
-              },
-            },
-          },
-          right: {
-            title: 'MATCH',
-            style: {
-              label: {
-                backgroundColor: 'transparent',
-                borderColor: '#4CCC93',
-                color: '#4CCC93',
-                borderWidth: 4,
-                fontSize: 36,
-                fontWeight: '800',
-                padding: 12,
-              },
-              wrapper: {
-                flexDirection: 'column',
-                alignItems: 'flex-start',
-                justifyContent: 'flex-start',
-                marginTop: 60,
-                marginLeft: 30,
+    <SafeAreaView style={styles.container}>
+      <View style={styles.swiperContainer}>
+        <Swiper
+          cards={pets}
+          renderCard={renderCard}
+          onSwipedLeft={handleSwipedLeft}
+          onSwipedRight={handleSwipedRight}
+          onSwipedAll={handleRefresh}
+          cardIndex={currentIndex}
+          backgroundColor={'#f5f5f5'}
+          stackSize={3}
+          stackSeparation={15}
+          overlayLabels={{
+            left: {
+              title: 'NOPE',
+              style: {
+                label: {
+                  backgroundColor: 'transparent',
+                  borderColor: '#EC5E6F',
+                  color: '#EC5E6F',
+                  borderWidth: 4,
+                  fontSize: 36,
+                  fontWeight: '800',
+                  padding: 12,
+                },
+                wrapper: {
+                  flexDirection: 'column',
+                  alignItems: 'flex-end',
+                  justifyContent: 'flex-start',
+                  marginTop: 60,
+                  marginLeft: -30,
+                },
               },
             },
-          },
-        }}
-      />
+            right: {
+              title: 'MATCH',
+              style: {
+                label: {
+                  backgroundColor: 'transparent',
+                  borderColor: '#4CCC93',
+                  color: '#4CCC93',
+                  borderWidth: 4,
+                  fontSize: 36,
+                  fontWeight: '800',
+                  padding: 12,
+                },
+                wrapper: {
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                  justifyContent: 'flex-start',
+                  marginTop: 60,
+                  marginLeft: 30,
+                },
+              },
+            },
+          }}
+        />
+      </View>
       
       <View style={styles.bottomContainer}>
         <IconButton
@@ -267,7 +269,7 @@ export const HomeScreen: React.FC = () => {
           </BlurView>
         </View>
       )}
-    </View>
+    </SafeAreaView>
   );
 };
 
@@ -276,14 +278,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
+  swiperContainer: {
+    flex: 1,
+  },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   animatedCard: {
-    height: SCREEN_HEIGHT - 180,
-    width: SCREEN_WIDTH - 40,
+    height: SCREEN_HEIGHT * 0.7,
+    width: SCREEN_WIDTH * 0.9,
     borderRadius: 24,
     overflow: 'hidden',
     backgroundColor: '#fff',
@@ -305,9 +310,10 @@ const styles = StyleSheet.create({
   },
   cardGradient: {
     position: 'absolute',
-    left: 0,right: 0,
+    left: 0,
+    right: 0,
     bottom: 0,
-    height: 200,
+    height: SCREEN_HEIGHT * 0.25,
     paddingHorizontal: 24,
     paddingBottom: 24,
     justifyContent: 'flex-end',
@@ -342,12 +348,13 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   bottomContainer: {
-    height: 100,
+    height: SCREEN_HEIGHT * 0.12,
     flexDirection: 'row',
     justifyContent: 'space-evenly',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingBottom: 16,
+    backgroundColor: '#f5f5f5',
   },
   button: {
     backgroundColor: 'white',
@@ -390,7 +397,7 @@ const styles = StyleSheet.create({
   },
   actionFeedback: {
     position: 'absolute',
-    top: 50,
+    top: SCREEN_HEIGHT * 0.05,
     left: 0,
     right: 0,
     alignItems: 'center',
@@ -419,6 +426,9 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: SCREEN_HEIGHT * 0.6,
+  },
+  bioScrollView: {
+    paddingBottom: 24,
   },
   bioText: {
     fontSize: 16,
