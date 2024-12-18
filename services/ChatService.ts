@@ -1,43 +1,31 @@
+import { auth, db } from "../config/firebase";
 import {
   collection,
+  query,
+  where,
+  orderBy,
+  onSnapshot,
+  addDoc,
+  updateDoc,
   doc,
+  serverTimestamp,
   getDoc,
   getDocs,
   limit,
-  onSnapshot,
-  orderBy,
-  query,
-  serverTimestamp,
-  updateDoc,
-  where,
   WriteBatch,
-  writeBatch
+  writeBatch,
+  DocumentData,
+  DocumentSnapshot,
+  QuerySnapshot,
 } from "firebase/firestore";
-import { auth, db } from "../config/firebase";
 import {
-  ChatDisplay,
   Conversation,
-  ConversationStatus,
   Message,
-  MessageType,
+  ChatDisplay,
   PetDetails,
+  ConversationStatus,
+  MessageType,
 } from "../types/chat";
-
-interface CloudinaryConfig {
-  cloudName: string;
-  apiKey: string;
-  apiSecret: string;
-  uploadPreset: string;
-  url: string;
-}
-
-const cloudinaryConfig: CloudinaryConfig = {
-  cloudName: process.env.EXPO_CLOUDINARY_CLOUD_NAME || "",
-  apiKey: process.env.EXPO_CLOUDINARY_API_KEY || "",
-  apiSecret: process.env.EXPO_CLOUDINARY_API_SECRET || "",
-  uploadPreset: process.env.EXPO_CLOUDINARY_UPLOAD_PRESET || "",
-  url: process.env.EXPO_CLOUDINARY_URL || "",
-};
 
 class ChatService {
   private static instance: ChatService;
@@ -49,13 +37,6 @@ class ChatService {
     this.messageListeners = new Map();
     this.conversationListeners = new Map();
     this.typingListeners = new Map();
-    this.validateConfig();
-  }
-
-  private validateConfig() {
-    if (!cloudinaryConfig.cloudName || !cloudinaryConfig.uploadPreset) {
-      console.error("Missing required Cloudinary configuration");
-    }
   }
 
   public static getInstance(): ChatService {
@@ -65,7 +46,39 @@ class ChatService {
     return ChatService.instance;
   }
 
+  private async processConversationDoc(
+    doc: DocumentSnapshot<DocumentData>,
+    userId: string
+  ): Promise<ChatDisplay> {
+    try {
+      const data = doc.data() as Conversation;
+      const petDetails = await this.fetchPetDetails(data.petId);
+      const unreadCount = await this.calculateUnreadMessages(doc.id, userId);
+
+      return {
+        id: doc.id,
+        petId: data.petId,
+        petName: petDetails?.name || "Unknown",
+        petAvatar: petDetails?.images.main || "/placeholder.png",
+        lastMessage: {
+          content: data.lastMessage?.content || "",
+          timestamp: data.lastMessage?.timestamp?.toDate() || new Date(),
+          type: data.lastMessage?.type || "text",
+        },
+        unread: unreadCount,
+        typing: data.typing || {},
+      };
+    } catch (error) {
+      console.error("Error processing conversation doc:", error);
+      throw error;
+    }
+  }
+
   async getConversations(userId: string): Promise<ChatDisplay[]> {
+    if (!userId) {
+      throw new Error("User ID is required");
+    }
+
     const conversationsQuery = query(
       collection(db, "conversations"),
       where("participants", "array-contains", userId),
@@ -74,39 +87,33 @@ class ChatService {
     );
 
     return new Promise((resolve, reject) => {
-      onSnapshot(
-        conversationsQuery,
-        async (snapshot) => {
-          try {
-            const conversationsData: ChatDisplay[] = await Promise.all(
-              snapshot.docs.map(async (doc) => {
-                const data = doc.data() as Conversation;
-                const petDetails = await this.fetchPetDetails(data.petId);
-                return {
-                  id: doc.id,
-                  petId: data.petId,
-                  petName: petDetails?.name || "Unknown",
-                  petAvatar: petDetails?.images.main || "/placeholder.png",
-                  lastMessage: {
-                    content: data.lastMessage?.content || "",
-                    timestamp:
-                      data.lastMessage?.timestamp.toDate() || new Date(),
-                    type: data.lastMessage?.type || "text",
-                  },
-                  unread: await this.calculateUnreadMessages(doc.id, userId),
-                  typing: data.typing || {},
-                };
-              })
-            );
-            resolve(conversationsData);
-          } catch (error) {
+      try {
+        const unsubscribe = onSnapshot(
+          conversationsQuery,
+          async (snapshot: QuerySnapshot) => {
+            try {
+              const conversationsData = await Promise.all(
+                snapshot.docs.map((doc) =>
+                  this.processConversationDoc(doc, userId)
+                )
+              );
+              resolve(conversationsData);
+            } catch (error) {
+              reject(error);
+            }
+          },
+          (error) => {
+            console.error("Error in getConversations:", error);
             reject(error);
           }
-        },
-        (error) => {
-          reject(error);
-        }
-      );
+        );
+
+        // Store the unsubscribe function
+        this.conversationListeners.set(userId, unsubscribe);
+      } catch (error) {
+        console.error("Error setting up conversations listener:", error);
+        reject(error);
+      }
     });
   }
 
@@ -115,6 +122,11 @@ class ChatService {
     onUpdate: (conversations: ChatDisplay[]) => void,
     onError: (error: Error) => void
   ): () => void {
+    if (!userId) {
+      onError(new Error("User ID is required"));
+      return () => {};
+    }
+
     const conversationsQuery = query(
       collection(db, "conversations"),
       where("participants", "array-contains", userId),
@@ -124,37 +136,21 @@ class ChatService {
 
     const unsubscribe = onSnapshot(
       conversationsQuery,
-      async (snapshot) => {
+      async (snapshot: QuerySnapshot) => {
         try {
-          const conversationsData: ChatDisplay[] = await Promise.all(
-            snapshot.docs.map(async (doc) => {
-              const data = doc.data() as Conversation;
-              const petDetails = await this.fetchPetDetails(data.petId);
-              const unreadCount = await this.calculateUnreadMessages(
-                doc.id,
-                userId
-              );
-              return {
-                id: doc.id,
-                petId: data.petId,
-                petName: petDetails?.name || "Unknown",
-                petAvatar: petDetails?.images.main || "/placeholder.png",
-                lastMessage: {
-                  content: data.lastMessage?.content || "",
-                  timestamp: data.lastMessage?.timestamp.toDate() || new Date(),
-                  type: data.lastMessage?.type || "text",
-                },
-                unread: unreadCount,
-                typing: data.typing || {},
-              };
-            })
+          const conversationsData = await Promise.all(
+            snapshot.docs.map((doc) => this.processConversationDoc(doc, userId))
           );
           onUpdate(conversationsData);
         } catch (error) {
+          console.error("Error in conversation subscription:", error);
           onError(error as Error);
         }
       },
-      (error) => onError(error)
+      (error) => {
+        console.error("Conversation subscription error:", error);
+        onError(error);
+      }
     );
 
     this.conversationListeners.set(userId, unsubscribe);
@@ -162,6 +158,10 @@ class ChatService {
   }
 
   async getMessages(conversationId: string): Promise<Message[]> {
+    if (!conversationId) {
+      throw new Error("Conversation ID is required");
+    }
+
     const messagesQuery = query(
       collection(db, "messages"),
       where("conversationId", "==", conversationId),
@@ -170,20 +170,28 @@ class ChatService {
     );
 
     return new Promise((resolve, reject) => {
-      onSnapshot(
-        messagesQuery,
-        (snapshot) => {
-          const messages = snapshot.docs.map((doc) => ({
-            id: doc.id,
-            ...doc.data(),
-            createdAt: doc.data().createdAt?.toDate() || new Date(),
-          })) as Message[];
-          resolve(messages);
-        },
-        (error) => {
-          reject(error);
-        }
-      );
+      try {
+        const unsubscribe = onSnapshot(
+          messagesQuery,
+          (snapshot) => {
+            const messages = snapshot.docs.map((doc) => ({
+              id: doc.id,
+              ...doc.data(),
+              createdAt: doc.data().createdAt?.toDate() || new Date(),
+            })) as Message[];
+            resolve(messages);
+          },
+          (error) => {
+            console.error("Error in getMessages:", error);
+            reject(error);
+          }
+        );
+
+        this.messageListeners.set(conversationId, unsubscribe);
+      } catch (error) {
+        console.error("Error setting up messages listener:", error);
+        reject(error);
+      }
     });
   }
 
@@ -192,6 +200,11 @@ class ChatService {
     onUpdate: (messages: Message[]) => void,
     onError: (error: Error) => void
   ): () => void {
+    if (!conversationId) {
+      onError(new Error("Conversation ID is required"));
+      return () => {};
+    }
+
     const messagesQuery = query(
       collection(db, "messages"),
       where("conversationId", "==", conversationId),
@@ -209,7 +222,10 @@ class ChatService {
         })) as Message[];
         onUpdate(messages);
       },
-      (error) => onError(error)
+      (error) => {
+        console.error("Message subscription error:", error);
+        onError(error);
+      }
     );
 
     this.messageListeners.set(conversationId, unsubscribe);
@@ -221,6 +237,11 @@ class ChatService {
     onUpdate: (typingUsers: Record<string, boolean>) => void,
     onError: (error: Error) => void
   ): () => void {
+    if (!conversationId) {
+      onError(new Error("Conversation ID is required"));
+      return () => {};
+    }
+
     const conversationRef = doc(db, "conversations", conversationId);
 
     const unsubscribe = onSnapshot(
@@ -229,7 +250,10 @@ class ChatService {
         const data = snapshot.data();
         onUpdate(data?.typing || {});
       },
-      (error) => onError(error)
+      (error) => {
+        console.error("Typing status subscription error:", error);
+        onError(error);
+      }
     );
 
     this.typingListeners.set(conversationId, unsubscribe);
@@ -242,28 +266,37 @@ class ChatService {
     type: MessageType = "text",
     gifUrl?: string
   ): Promise<void> {
+    if (!conversationId || !content) {
+      throw new Error("Conversation ID and content are required");
+    }
+
     const currentUser = auth.currentUser;
-    if (!currentUser) throw new Error("No authenticated user");
-
-    const messageData: Partial<Message> = {
-      content,
-      conversationId,
-      senderId: currentUser.uid,
-      createdAt: new Date(),
-      type,
-      read: false,
-    };
-
-    if (type === "gif" && gifUrl) {
-      messageData.gifUrl = gifUrl;
+    if (!currentUser) {
+      throw new Error("No authenticated user");
     }
 
     const batch: WriteBatch = writeBatch(db);
 
     try {
+      // Create message data
+      const messageData: Partial<Message> = {
+        content,
+        conversationId,
+        senderId: currentUser.uid,
+        createdAt: new Date(),
+        type,
+        read: false,
+      };
+
+      if (type === "gif" && gifUrl) {
+        messageData.gifUrl = gifUrl;
+      }
+
+      // Add new message
       const messageRef = doc(collection(db, "messages"));
       batch.set(messageRef, messageData);
 
+      // Update conversation
       const conversationRef = doc(db, "conversations", conversationId);
       batch.update(conversationRef, {
         lastMessage: {
@@ -282,11 +315,11 @@ class ChatService {
   }
 
   async uploadImage(uri: string): Promise<string> {
-    try {
-      if (!cloudinaryConfig.cloudName || !cloudinaryConfig.uploadPreset) {
-        throw new Error("Cloudinary configuration is missing");
-      }
+    if (!uri) {
+      throw new Error("Image URI is required");
+    }
 
+    try {
       const formData = new FormData();
       const filename = uri.split("/").pop() || "image.jpg";
       const match = /\.(\w+)$/.exec(filename);
@@ -298,12 +331,15 @@ class ChatService {
         type,
       } as any);
 
-      formData.append("upload_preset", cloudinaryConfig.uploadPreset);
-      formData.append("cloud_name", cloudinaryConfig.cloudName);
-      formData.append("api_key", cloudinaryConfig.apiKey);
+      formData.append(
+        "upload_preset",
+        process.env.EXPO_CLOUDINARY_UPLOAD_PRESET
+      );
+      formData.append("cloud_name", process.env.EXPO_CLOUDINARY_CLOUD_NAME);
+      formData.append("api_key", process.env.EXPO_CLOUDINARY_API_KEY);
 
       const response = await fetch(
-        `https://api.cloudinary.com/v1_1/${cloudinaryConfig.cloudName}/image/upload`,
+        `https://api.cloudinary.com/v1_1/${process.env.EXPO_CLOUDINARY_CLOUD_NAME}/image/upload`,
         {
           method: "POST",
           body: formData,
@@ -333,6 +369,10 @@ class ChatService {
   }
 
   async markMessageAsRead(messageId: string): Promise<void> {
+    if (!messageId) {
+      throw new Error("Message ID is required");
+    }
+
     try {
       const messageRef = doc(db, "messages", messageId);
       await updateDoc(messageRef, { read: true });
@@ -347,6 +387,10 @@ class ChatService {
     userId: string,
     isTyping: boolean
   ): Promise<void> {
+    if (!conversationId || !userId) {
+      throw new Error("Conversation ID and user ID are required");
+    }
+
     try {
       const conversationRef = doc(db, "conversations", conversationId);
       await updateDoc(conversationRef, {
@@ -359,6 +403,10 @@ class ChatService {
   }
 
   async fetchPetDetails(petId: string): Promise<PetDetails | null> {
+    if (!petId) {
+      throw new Error("Pet ID is required");
+    }
+
     try {
       const petDoc = await getDoc(doc(db, "pets", petId));
       if (petDoc.exists()) {
@@ -381,6 +429,10 @@ class ChatService {
     conversationId: string,
     userId: string
   ): Promise<number> {
+    if (!conversationId || !userId) {
+      throw new Error("Conversation ID and user ID are required");
+    }
+
     try {
       const messagesQuery = query(
         collection(db, "messages"),
