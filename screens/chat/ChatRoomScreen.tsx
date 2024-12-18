@@ -26,8 +26,6 @@ import ChatService from "../../services/ChatService";
 import { PetDetails } from "../../types/chat";
 import { Message } from "../../types/Message";
 
-
-
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const MAX_IMAGE_WIDTH = SCREEN_WIDTH * 0.65;
 
@@ -59,37 +57,80 @@ export function ChatRoomScreen({ navigation, route }: Props) {
   const theme = useTheme();
   const currentUser = auth.currentUser;
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
+  const messagesSubscriptionRef = useRef<(() => void) | null>(null);
+  const typingSubscriptionRef = useRef<(() => void) | null>(null);
 
   const { conversationId, petId, petName } = route.params;
   const {
     sendMessage,
-    getMessages,
     uploadImage,
     markMessageAsRead,
     updateTypingStatus,
+    subscribeToMessages,
+    subscribeToTyping,
+    unsubscribeFromMessages,
+    unsubscribeFromTyping,
   } = useChatContext();
 
+  // Subscribe to messages with cleanup
   useEffect(() => {
-    const fetchMessages = async () => {
-      try {
-        const fetchedMessages = await getMessages(conversationId);
-        setMessages(fetchedMessages as unknown as Message[]);
-        setIsLoading(false);
+    const handleMessages = (newMessages: Message[]) => {
+      setMessages(newMessages);
+      setIsLoading(false);
 
-        fetchedMessages.forEach((msg) => {
-          if (msg.senderId !== currentUser?.uid && !msg.read) {
-            markMessageAsRead(msg.id);
-          }
-        });
-      } catch (error) {
-        console.error("Error fetching messages:", error);
-        Alert.alert("Error", "Failed to load messages");
-        setIsLoading(false);
-      }
+      // Mark messages as read
+      newMessages.forEach((msg) => {
+        if (msg.senderId !== currentUser?.uid && !msg.read) {
+          markMessageAsRead(msg.id);
+        }
+      });
     };
 
-    fetchMessages();
-  }, [conversationId, currentUser?.uid, getMessages, markMessageAsRead]);
+    messagesSubscriptionRef.current = subscribeToMessages(
+      conversationId,
+      handleMessages
+    );
+
+    return () => {
+      if (messagesSubscriptionRef.current) {
+        unsubscribeFromMessages(conversationId);
+        messagesSubscriptionRef.current = null;
+      }
+    };
+  }, [
+    conversationId,
+    currentUser?.uid,
+    subscribeToMessages,
+    unsubscribeFromMessages,
+    markMessageAsRead,
+  ]);
+
+  // Subscribe to typing status with cleanup
+  useEffect(() => {
+    const handleTypingStatus = (typingUsers: Record<string, boolean>) => {
+      const isOtherUserTyping = Object.entries(typingUsers).some(
+        ([userId, isTyping]) => userId !== currentUser?.uid && isTyping
+      );
+      setOtherUserTyping(isOtherUserTyping);
+    };
+
+    typingSubscriptionRef.current = subscribeToTyping(
+      conversationId,
+      handleTypingStatus
+    );
+
+    return () => {
+      if (typingSubscriptionRef.current) {
+        unsubscribeFromTyping(conversationId);
+        typingSubscriptionRef.current = null;
+      }
+    };
+  }, [
+    conversationId,
+    currentUser?.uid,
+    subscribeToTyping,
+    unsubscribeFromTyping,
+  ]);
 
   useEffect(() => {
     const fetchPetDetails = async () => {
@@ -122,6 +163,9 @@ export function ChatRoomScreen({ navigation, route }: Props) {
     return () => {
       keyboardDidShowListener.remove();
       keyboardDidHideListener.remove();
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
     };
   }, []);
 
@@ -143,6 +187,7 @@ export function ChatRoomScreen({ navigation, route }: Props) {
     try {
       const cloudinaryUrl = await uploadImage(imagePath);
       await sendMessage(conversationId, cloudinaryUrl, "image");
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     } catch (error) {
       console.error("Error uploading image:", error);
       Alert.alert("Error", "Failed to send image");
@@ -154,6 +199,7 @@ export function ChatRoomScreen({ navigation, route }: Props) {
   const handleGifSelect = async (gif: { url: string; preview: string }) => {
     try {
       await sendMessage(conversationId, gif.preview, "gif", gif.url);
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
     } catch (error) {
       console.error("Error sending GIF:", error);
       Alert.alert("Error", "Failed to send GIF");
@@ -258,7 +304,6 @@ export function ChatRoomScreen({ navigation, route }: Props) {
       </View>
     );
   }
-
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
