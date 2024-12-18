@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import {
   View,
   TouchableOpacity,
@@ -7,22 +7,18 @@ import {
   Alert,
   Linking,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { Text, useTheme } from "react-native-paper";
 import { Camera, Image as ImageIcon, X } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
-import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImageManipulator from "expo-image-manipulator";
 import { GifPicker } from "./GifPicker";
 
 interface MediaPickerProps {
   onClose: () => void;
   onImageSelect: (path: string) => void;
   onGifSelect: (gif: { url: string; preview: string }) => void;
-}
-
-interface ImageDimensions {
-  width: number;
-  height: number;
 }
 
 export const MediaPicker: React.FC<MediaPickerProps> = ({
@@ -34,76 +30,55 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({
   const [processing, setProcessing] = useState(false);
   const theme = useTheme();
 
-  const getImageDimensions = async (uri: string): Promise<ImageDimensions> => {
-    return new Promise((resolve, reject) => {
-      Image.getSize(
-        uri,
-        (width, height) => resolve({ width, height }),
-        (error) => reject(error)
-      );
-    });
-  };
-
   const processImage = async (uri: string): Promise<string> => {
     try {
       setProcessing(true);
-      
-      // Get original image dimensions
-      const dimensions = await getImageDimensions(uri);
-      
-      // Calculate target dimensions (maintaining aspect ratio)
-      const MAX_DIMENSION = 1080;
-      let targetWidth = dimensions.width;
-      let targetHeight = dimensions.height;
-      
-      if (dimensions.width > MAX_DIMENSION || dimensions.height > MAX_DIMENSION) {
-        if (dimensions.width > dimensions.height) {
-          targetWidth = MAX_DIMENSION;
-          targetHeight = (dimensions.height / dimensions.width) * MAX_DIMENSION;
-        } else {
-          targetHeight = MAX_DIMENSION;
-          targetWidth = (dimensions.width / dimensions.height) * MAX_DIMENSION;
-        }
-      }
 
-      // Process image
+      // Process image with fixed dimensions
       const processed = await ImageManipulator.manipulateAsync(
         uri,
-        [{ resize: { width: targetWidth, height: targetHeight } }],
+        [{ resize: { width: 1080 } }], // This maintains aspect ratio
         {
           compress: 0.8,
           format: ImageManipulator.SaveFormat.JPEG,
-          base64: false,
         }
       );
 
       return processed.uri;
     } catch (error) {
-      console.error('Image processing error:', error);
-      throw new Error('Failed to process image');
+      console.error("Image processing error:", error);
+      throw new Error("Failed to process image");
     } finally {
       setProcessing(false);
     }
   };
 
-  const checkAndRequestPermissions = async (permissionType: 'camera' | 'mediaLibrary'): Promise<boolean> => {
+  const checkAndRequestPermissions = async (
+    permissionType: "camera" | "mediaLibrary"
+  ): Promise<boolean> => {
     try {
-      const permissionRequest = permissionType === 'camera' 
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      const permissionRequest =
+        permissionType === "camera"
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync();
 
       if (!permissionRequest.granted) {
         Alert.alert(
           "Permission needed",
-          `Please allow access to your ${permissionType === 'camera' ? 'camera' : 'photos'} to ${permissionType === 'camera' ? 'take photos' : 'select images'}.`,
+          `Please allow access to your ${
+            permissionType === "camera" ? "camera" : "photos"
+          } to ${
+            permissionType === "camera" ? "take photos" : "select images"
+          }.`,
           [
             { text: "Cancel", style: "cancel" },
-            { 
-              text: "Settings", 
-              onPress: () => Platform.OS === 'ios' 
-                ? Linking.openURL('app-settings:') 
-                : Linking.openSettings() 
-            }
+            {
+              text: "Settings",
+              onPress: () =>
+                Platform.OS === "ios"
+                  ? Linking.openURL("app-settings:")
+                  : Linking.openSettings(),
+            },
           ]
         );
         return false;
@@ -117,7 +92,7 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({
 
   const handleImagePick = async () => {
     try {
-      const hasPermission = await checkAndRequestPermissions('mediaLibrary');
+      const hasPermission = await checkAndRequestPermissions("mediaLibrary");
       if (!hasPermission) return;
 
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -143,7 +118,7 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({
 
   const handleCameraCapture = async () => {
     try {
-      const hasPermission = await checkAndRequestPermissions('camera');
+      const hasPermission = await checkAndRequestPermissions("camera");
       if (!hasPermission) return;
 
       const result = await ImagePicker.launchCameraAsync({
@@ -159,10 +134,7 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({
       }
     } catch (error) {
       console.error("Camera error:", error);
-      Alert.alert(
-        "Error",
-        "Failed to capture image. Please try again."
-      );
+      Alert.alert("Error", "Failed to capture image. Please try again.");
     }
   };
 
@@ -207,8 +179,8 @@ export const MediaPicker: React.FC<MediaPickerProps> = ({
             <Text style={styles.mediaOptionText}>Camera</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity 
-          style={styles.mediaOption} 
+        <TouchableOpacity
+          style={styles.mediaOption}
           onPress={handleImagePick}
           activeOpacity={0.7}
         >
@@ -277,8 +249,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   processingText: {
     marginTop: 16,
@@ -286,5 +258,3 @@ const styles = StyleSheet.create({
     color: "#666666",
   },
 });
-
-export default MediaPicker;
