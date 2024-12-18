@@ -1,97 +1,197 @@
-import React from "react";
-import { FlatList, StyleSheet, TouchableOpacity, View } from "react-native";
-import { Avatar, Surface, Text } from "react-native-paper";
-import type { Chat } from "../types/chat";
+import React, { useEffect, useRef, memo } from "react";
+import {
+  StyleSheet,
+  View,
+  TouchableOpacity,
+  Animated,
+  FlatList,
+} from "react-native";
+import {
+  Avatar,
+  Text,
+  Badge,
+  useTheme,
+  MD3Theme as Theme,
+} from "react-native-paper";
+import { format } from "date-fns";
+import { ChatDisplay } from "../types/chat";
 
 interface ChatListProps {
-  chats: Chat[];
-  onChatPress: (chat: Chat) => void;
+  chats: ChatDisplay[];
+  onChatPress: (chat: ChatDisplay) => void;
 }
 
-export function ChatList({ chats, onChatPress }: ChatListProps) {
-  const renderItem = ({ item: chat }: { item: Chat }) => (
-    <TouchableOpacity onPress={() => onChatPress(chat)}>
-      <Surface style={styles.chatItem} elevation={0}>
-        <Avatar.Image size={50} source={{ uri: chat.userAvatar }} />
-        <View style={styles.chatInfo}>
-          <View style={styles.chatHeader}>
-            <Text variant="titleMedium">{chat.userName}</Text>
-            {chat.lastMessage && (
-              <Text variant="bodySmall" style={styles.timestamp}>
-                {new Date(chat.lastMessage.timestamp).toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </Text>
-            )}
-          </View>
-          {chat.lastMessage && (
-            <Text
-              variant="bodyMedium"
-              numberOfLines={1}
-              style={styles.lastMessage}
-            >
-              {chat.lastMessage.text}
+const ChatListItem = memo(
+  ({
+    item,
+    onPress,
+    theme,
+    fadeAnim,
+    index,
+  }: {
+    item: ChatDisplay;
+    onPress: () => void;
+    theme: Theme;
+    fadeAnim: Animated.Value;
+    index: number;
+  }) => (
+    <Animated.View
+      style={{
+        opacity: fadeAnim,
+        transform: [
+          {
+            translateY: fadeAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [50 * (index + 1), 0],
+            }),
+          },
+        ],
+      }}
+    >
+      <TouchableOpacity
+        style={[styles.chatItem, { backgroundColor: theme.colors.surface }]}
+        onPress={onPress}
+      >
+        <Avatar.Image
+          size={60}
+          source={{ uri: item.petAvatar }}
+          style={styles.avatar}
+        >
+          {!item.images?.main && (
+            <Text style={styles.avatarText}>
+              {item.petName.charAt(0).toUpperCase()}
             </Text>
           )}
-        </View>
-        {chat.unread && chat.unread > 0 && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadText}>{chat.unread}</Text>
+        </Avatar.Image>
+        <View style={styles.chatItemContent}>
+          <View style={styles.chatItemHeader}>
+            <Text
+              style={[styles.chatItemName, { color: theme.colors.primary }]}
+            >
+              {item.petName}
+            </Text>
+            <Text
+              style={[
+                styles.chatItemTime,
+                { color: theme.colors.onSurfaceVariant },
+              ]}
+            >
+              {format(item.lastMessage.timestamp, "MMM d")}
+            </Text>
           </View>
-        )}
-      </Surface>
-    </TouchableOpacity>
+          <View style={styles.chatItemFooter}>
+            <Text
+              style={[
+                styles.chatItemLastMessage,
+                { color: theme.colors.onSurfaceVariant },
+              ]}
+              numberOfLines={1}
+            >
+              {item.lastMessage.content}
+            </Text>
+            {item.unread > 0 && (
+              <Badge
+                style={[
+                  styles.unreadBadge,
+                  { backgroundColor: theme.colors.error },
+                ]}
+              >
+                {item.unread}
+              </Badge>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  )
+);
+
+export const ChatList: React.FC<ChatListProps> = ({ chats, onChatPress }) => {
+  const theme = useTheme();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  const renderChatItem = ({
+    item,
+    index,
+  }: {
+    item: ChatDisplay;
+    index: number;
+  }) => (
+    <ChatListItem
+      item={item}
+      onPress={() => onChatPress(item)}
+      theme={theme}
+      fadeAnim={fadeAnim}
+      index={index}
+    />
   );
 
   return (
     <FlatList
       data={chats}
-      renderItem={renderItem}
+      renderItem={renderChatItem}
       keyExtractor={(item) => item.id}
-      style={styles.list}
+      style={styles.chatList}
+      contentContainerStyle={styles.chatListContent}
     />
   );
-}
+};
 
 const styles = StyleSheet.create({
-  list: {
+  chatList: {
     flex: 1,
+  },
+  chatListContent: {
+    padding: 16,
   },
   chatItem: {
     flexDirection: "row",
     padding: 16,
-    alignItems: "center",
-    backgroundColor: "white",
+    borderRadius: 8,
+    marginBottom: 8,
   },
-  chatInfo: {
+  chatItemContent: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 16,
   },
-  chatHeader: {
+  chatItemHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 4,
   },
-  timestamp: {
-    color: "#666",
+  chatItemName: {
+    fontSize: 16,
+    fontWeight: "bold",
   },
-  lastMessage: {
-    color: "#666",
+  chatItemTime: {
+    fontSize: 12,
+  },
+  chatItemFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+  },
+  chatItemLastMessage: {
+    fontSize: 14,
+    flex: 1,
   },
   unreadBadge: {
-    backgroundColor: "#007AFF",
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
+    marginLeft: 8,
+  },
+  avatar: {
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 6,
   },
-  unreadText: {
+  avatarText: {
+    fontSize: 24,
     color: "white",
-    fontSize: 12,
-    fontWeight: "bold",
   },
 });
